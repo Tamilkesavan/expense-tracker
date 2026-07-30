@@ -23,7 +23,13 @@ import {
   GraduationCap,
   MoreHorizontal,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  User,
+  Search,
+  Download,
+  Sparkles,
+  Flame,
+  Clock
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -39,16 +45,16 @@ import {
 
 // --- SEEDED CATEGORIES ---
 const DEFAULT_CATEGORIES = [
-  { id: 'cat-1', name: 'Food & Dining', color: '#f97316', icon: 'Utensils' },
+  { id: 'cat-1', name: 'Food & Dining', color: '#FF7A29', icon: 'Utensils' },
   { id: 'cat-2', name: 'Transport', color: '#3b82f6', icon: 'Car' },
-  { id: 'cat-3', name: 'Shopping', color: '#ec4899', icon: 'ShoppingBag' },
+  { id: 'cat-3', name: 'Shopping', color: '#FF3B6E', icon: 'ShoppingBag' },
   { id: 'cat-4', name: 'Entertainment', color: '#8b5cf6', icon: 'Tv' },
-  { id: 'cat-5', name: 'Utilities', color: '#eab308', icon: 'Zap' },
+  { id: 'cat-5', name: 'Utilities', color: '#B8860B', icon: 'Zap' },
   { id: 'cat-6', name: 'Healthcare', color: '#ef4444', icon: 'HeartPulse' },
   { id: 'cat-7', name: 'Housing', color: '#78716c', icon: 'Home' },
   { id: 'cat-8', name: 'Travel', color: '#06b6d4', icon: 'Plane' },
   { id: 'cat-9', name: 'Education', color: '#10b981', icon: 'GraduationCap' },
-  { id: 'cat-10', name: 'Other', color: '#94a3b8', icon: 'MoreHorizontal' },
+  { id: 'cat-10', name: 'Other', color: '#7A5C4C', icon: 'MoreHorizontal' },
 ];
 
 const ICON_MAP = {
@@ -84,15 +90,26 @@ const formatMonthLabel = (monthKey) => {
   return date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' });
 };
 
-export default function App() {
-  // --- VIEW STATE ---
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard | transactions | budgets
+const formatDateFormatted = (dateStr) => {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
-  // --- DATABASE DATA STATES ---
+const calculateDaysDiff = (start, end) => {
+  if (!start || !end) return 0;
+  const s = new Date(start);
+  const e = new Date(end);
+  const diffTime = Math.abs(e - s);
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+};
+
+export default function App() {
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard | transactions | budgets | menstrual
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
-  const [incomes, setIncomes] = useState([]);
   const [budgets, setBudgets] = useState([]);
+  const [cycles, setCycles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // --- FETCH DATA FROM SUPABASE ---
@@ -110,50 +127,48 @@ export default function App() {
       .order('expense_date', { ascending: false });
     if (!expErr && expData) setExpenses(expData);
 
-    // Fetch incomes
-    const { data: incData, error: incErr } = await supabase
-      .from('incomes')
-      .select('*')
-      .order('income_date', { ascending: false });
-    if (!incErr && incData) setIncomes(incData);
-
     // Fetch budgets
     const { data: bdgData, error: bdgErr } = await supabase
       .from('budgets')
       .select('*');
     if (!bdgErr && bdgData) setBudgets(bdgData);
 
+    // Fetch menstrual cycles
+    const { data: cycData, error: cycErr } = await supabase
+      .from('menstrual_cycles')
+      .select('*')
+      .order('start_date', { ascending: false });
+    if (!cycErr && cycData) setCycles(cycData);
+
     setIsLoading(false);
   };
 
-  // --- FILTER STATES ---
+  // --- FILTER & SEARCH STATES ---
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey());
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // --- MODAL STATES ---
+  // --- MODAL & FORM STATES ---
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
-  const [isAddIncomeOpen, setIsAddIncomeOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
 
-  // Form inputs
   const [expenseForm, setExpenseForm] = useState({
     amount: '',
     category_id: DEFAULT_CATEGORIES[0].id,
     description: '',
+    added_by: '',
     expense_date: new Date().toISOString().split('T')[0]
   });
 
-  const [incomeForm, setIncomeForm] = useState({
-    amount: '',
-    description: '',
-    income_date: new Date().toISOString().split('T')[0]
+  const [cycleForm, setCycleForm] = useState({
+    start_date: new Date().toISOString().split('T')[0],
+    end_date: new Date().toISOString().split('T')[0]
   });
 
-  // Inline budget editing state
   const [editingBudgetId, setEditingBudgetId] = useState(null);
   const [tempBudgetAmount, setTempBudgetAmount] = useState('');
 
-  // --- DERIVED METRICS ---
+  // --- COMPUTED EXPENSE METRICS ---
   const currentMonthKey = getCurrentMonthKey();
 
   const currentMonthExpensesTotal = useMemo(() => {
@@ -162,30 +177,24 @@ export default function App() {
       .reduce((acc, e) => acc + Number(e.amount), 0);
   }, [expenses, currentMonthKey]);
 
-  const currentMonthIncomeTotal = useMemo(() => {
-    return incomes
-      .filter((i) => i.income_date?.startsWith(currentMonthKey))
-      .reduce((acc, i) => acc + Number(i.amount), 0);
-  }, [incomes, currentMonthKey]);
+  const currentMonthBudgetTotal = useMemo(() => {
+    return budgets
+      .filter((b) => b.month === currentMonthKey)
+      .reduce((acc, b) => acc + Number(b.amount), 0);
+  }, [budgets, currentMonthKey]);
 
-  const currentMonthBalance = currentMonthIncomeTotal - currentMonthExpensesTotal;
-  const currentMonthSavings = currentMonthBalance > 0 ? currentMonthBalance : 0;
+  const remainingBudget = currentMonthBudgetTotal - currentMonthExpensesTotal;
 
-  // Monthly Spending Trend (Last 6 Months)
   const monthlyTrendData = useMemo(() => {
     const months = getLast6Months();
     return months.map((mKey) => {
       const total = expenses
         .filter((e) => e.expense_date?.startsWith(mKey))
         .reduce((acc, e) => acc + Number(e.amount), 0);
-      return {
-        month: formatMonthLabel(mKey),
-        amount: total
-      };
+      return { month: formatMonthLabel(mKey), amount: total };
     });
   }, [expenses]);
 
-  // Current Month Category Breakdown for Donut Chart
   const categoryBreakdownData = useMemo(() => {
     const currentMonthExpenses = expenses.filter((e) =>
       e.expense_date?.startsWith(currentMonthKey)
@@ -196,16 +205,11 @@ export default function App() {
         const value = currentMonthExpenses
           .filter((e) => e.category_id === cat.id)
           .reduce((acc, e) => acc + Number(e.amount), 0);
-        return {
-          name: cat.name,
-          value,
-          color: cat.color
-        };
+        return { name: cat.name, value, color: cat.color };
       })
       .filter((item) => item.value > 0);
   }, [expenses, categories, currentMonthKey]);
 
-  // Category Spend mapping for Budgets Page / Dashboard Progress Bars
   const categorySpendMap = useMemo(() => {
     const map = {};
     expenses
@@ -216,7 +220,63 @@ export default function App() {
     return map;
   }, [expenses, selectedMonth]);
 
-  // --- SUPABASE DATABASE HANDLERS ---
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((e) => {
+      const matchesMonth = selectedMonth ? e.expense_date?.startsWith(selectedMonth) : true;
+      const matchesCategory =
+        selectedCategoryFilter === 'ALL' ? true : e.category_id === selectedCategoryFilter;
+      const query = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        query === ''
+          ? true
+          : (e.description || '').toLowerCase().includes(query) ||
+            (e.added_by || '').toLowerCase().includes(query);
+
+      return matchesMonth && matchesCategory && matchesSearch;
+    });
+  }, [expenses, selectedMonth, selectedCategoryFilter, searchQuery]);
+
+  const searchTotalAmount = useMemo(() => {
+    return filteredExpenses.reduce((acc, e) => acc + Number(e.amount), 0);
+  }, [filteredExpenses]);
+
+  // --- MENSTRUAL METRICS ---
+  const avgCycleDays = useMemo(() => {
+    if (cycles.length === 0) return 0;
+    const totalDays = cycles.reduce((acc, c) => acc + calculateDaysDiff(c.start_date, c.end_date), 0);
+    return Math.round(totalDays / cycles.length);
+  }, [cycles]);
+
+  // --- ACTIONS ---
+  const handleExportCSV = () => {
+    if (filteredExpenses.length === 0) {
+      alert('No transactions found to export.');
+      return;
+    }
+
+    const headers = ['Description', 'Category', 'Added By', 'Date', 'Amount (INR)'];
+    const rows = filteredExpenses.map((exp) => {
+      const cat = categories.find((c) => c.id === exp.category_id);
+      return [
+        `"${(exp.description || '').replace(/"/g, '""')}"`,
+        `"${cat ? cat.name : 'Other'}"`,
+        `"${(exp.added_by || 'Pooja').replace(/"/g, '""')}"`,
+        `"${exp.expense_date}"`,
+        exp.amount
+      ];
+    });
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `expenses_${selectedMonth}_${searchQuery.trim() || 'all'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0) return;
@@ -226,6 +286,7 @@ export default function App() {
       category_id: expenseForm.category_id,
       amount: Number(expenseForm.amount),
       description: expenseForm.description || 'Expense',
+      added_by: expenseForm.added_by || 'Pooja',
       expense_date: expenseForm.expense_date,
       created_at: new Date().toISOString()
     };
@@ -239,45 +300,17 @@ export default function App() {
         amount: '',
         category_id: DEFAULT_CATEGORIES[0].id,
         description: '',
+        added_by: '',
         expense_date: new Date().toISOString().split('T')[0]
       });
     } else {
-      alert('Error saving expense to database: ' + error.message);
-    }
-  };
-
-  const handleAddIncome = async (e) => {
-    e.preventDefault();
-    if (!incomeForm.amount || Number(incomeForm.amount) <= 0) return;
-
-    const newIncome = {
-      id: 'inc-' + Date.now(),
-      amount: Number(incomeForm.amount),
-      description: incomeForm.description || 'Income',
-      income_date: incomeForm.income_date,
-      created_at: new Date().toISOString()
-    };
-
-    const { error } = await supabase.from('incomes').insert([newIncome]);
-
-    if (!error) {
-      setIncomes((prev) => [newIncome, ...prev]);
-      setIsAddIncomeOpen(false);
-      setIncomeForm({
-        amount: '',
-        description: '',
-        income_date: new Date().toISOString().split('T')[0]
-      });
-    } else {
-      alert('Error saving income to database: ' + error.message);
+      alert('Error saving expense: ' + error.message);
     }
   };
 
   const handleDeleteExpense = async () => {
     if (!deleteTargetId) return;
-
     const { error } = await supabase.from('expenses').delete().eq('id', deleteTargetId);
-
     if (!error) {
       setExpenses((prev) => prev.filter((e) => e.id !== deleteTargetId));
       setDeleteTargetId(null);
@@ -296,7 +329,6 @@ export default function App() {
     };
 
     const { error } = await supabase.from('budgets').upsert(budgetPayload);
-
     if (!error) {
       await fetchCloudData();
       setEditingBudgetId(null);
@@ -306,17 +338,45 @@ export default function App() {
     }
   };
 
-  // Filtered Expenses List for Transactions Page
-  const filteredExpenses = useMemo(() => {
-    return expenses.filter((e) => {
-      const matchesMonth = selectedMonth ? e.expense_date?.startsWith(selectedMonth) : true;
-      const matchesCategory =
-        selectedCategoryFilter === 'ALL' ? true : e.category_id === selectedCategoryFilter;
-      return matchesMonth && matchesCategory;
-    });
-  }, [expenses, selectedMonth, selectedCategoryFilter]);
+  // --- MENSTRUAL TRACKER CYCLE HANDLER ---
+  const handleAddCycle = async (e) => {
+    e.preventDefault();
+    if (!cycleForm.start_date || !cycleForm.end_date) return;
 
-  // Recent 5 expenses for Dashboard
+    if (new Date(cycleForm.end_date) < new Date(cycleForm.start_date)) {
+      alert('End date cannot be before start date!');
+      return;
+    }
+
+    const newCycle = {
+      id: 'cyc-' + Date.now(),
+      start_date: cycleForm.start_date,
+      end_date: cycleForm.end_date,
+      created_at: new Date().toISOString()
+    };
+
+    const { error } = await supabase.from('menstrual_cycles').insert([newCycle]);
+
+    if (!error) {
+      setCycles((prev) => [newCycle, ...prev].sort((a, b) => new Date(b.start_date) - new Date(a.start_date)));
+      setCycleForm({
+        start_date: new Date().toISOString().split('T')[0],
+        end_date: new Date().toISOString().split('T')[0]
+      });
+    } else {
+      alert('Error saving period cycle: ' + error.message);
+    }
+  };
+
+  const handleDeleteCycle = async (id) => {
+    const { error } = await supabase.from('menstrual_cycles').delete().eq('id', id);
+    if (!error) {
+      setCycles((prev) => prev.filter((c) => c.id !== id));
+    } else {
+      alert('Error deleting record: ' + error.message);
+    }
+  };
+
   const recentExpenses = useMemo(() => {
     return [...expenses]
       .sort((a, b) => new Date(b.expense_date) - new Date(a.expense_date))
@@ -324,189 +384,133 @@ export default function App() {
   }, [expenses]);
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: '40px' }}>
-      {/* --- STICKY FROSTED NAV BAR --- */}
-      <nav
-        className="glass-nav"
-        style={{
-          position: 'sticky',
-          top: 0,
-          zIndex: 100,
-          padding: '12px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              background: '#731358',
-              color: 'white',
-              borderRadius: '12px',
-              padding: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
-          >
-            <Wallet size={20} />
+    <div style={{ minHeight: '100vh', paddingBottom: '48px', background: currentView === 'menstrual' ? '#0d0714' : 'transparent', transition: 'background 0.3s ease' }}>
+      {/* HEADER / NAVIGATION */}
+      <nav className="glass-nav" style={{ position: 'sticky', top: 0, zIndex: 100, padding: '14px 24px', background: currentView === 'menstrual' ? 'rgba(13, 7, 20, 0.9)' : undefined, borderColor: currentView === 'menstrual' ? 'rgba(255, 59, 110, 0.3)' : undefined }}>
+        <div style={{ maxWidth: '1120px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: currentView === 'menstrual' ? 'linear-gradient(135deg, #FF2A6D, #9A1750)' : 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '12px', padding: '10px', display: 'flex', boxShadow: '0 4px 14px rgba(255,42,109,0.3)' }}>
+              {currentView === 'menstrual' ? <Flame size={20} /> : <Wallet size={20} />}
+            </div>
+            <div>
+              <h1 style={{ fontWeight: '800', fontSize: '1.2rem', color: currentView === 'menstrual' ? '#ffffff' : '#3A1F16', letterSpacing: '-0.02em' }}>
+               Tamil & Pooja Suite
+              </h1>
+              <span style={{ fontSize: '0.75rem', color: currentView === 'menstrual' ? '#FF2A6D' : '#7A5C4C', fontWeight: '600' }}>
+                {currentView === 'menstrual' ? '' : 'Expense & Budget Manager'}
+              </span>
+            </div>
           </div>
-          <span style={{ fontWeight: '700', fontSize: '1.15rem', color: '#1e293b' }}>
-            Tamil Pooja Expense Tracker
-          </span>
-        </div>
 
-        {/* Navigation Pills */}
-        <div
-          style={{
-            display: 'flex',
-            background: 'rgba(255, 255, 255, 0.5)',
-            padding: '4px',
-            borderRadius: '999px',
-            border: '1px solid rgba(255, 255, 255, 0.8)',
-            gap: '4px'
-          }}
-        >
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-            { id: 'transactions', label: 'Transactions', icon: Receipt },
-            { id: 'budgets', label: 'Budgets', icon: PieChartIcon }
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = currentView === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setCurrentView(tab.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 16px',
-                  borderRadius: '999px',
-                  border: 'none',
-                  background: isActive ? '#731358' : 'transparent',
-                  color: isActive ? '#ffffff' : '#64748b',
-                  fontWeight: isActive ? '600' : '500',
-                  fontSize: '0.9rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <Icon size={16} />
-                <span>{tab.label}</span>
-              </button>
-            );
-          })}
+          <div style={{ display: 'flex', background: currentView === 'menstrual' ? 'rgba(28, 15, 42, 0.8)' : 'rgba(255, 255, 255, 0.7)', padding: '4px', borderRadius: '99px', border: currentView === 'menstrual' ? '1px solid rgba(255, 59, 110, 0.3)' : '1px solid #F0DCC0' }}>
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+              { id: 'transactions', label: 'Transactions', icon: Receipt },
+              { id: 'budgets', label: 'Budgets', icon: PieChartIcon },
+              { id: 'menstrual', label: 'Menstrual Tracker', icon: HeartPulse }
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = currentView === tab.id;
+              const isMenstrualTab = tab.id === 'menstrual';
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setCurrentView(tab.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '8px 18px',
+                    borderRadius: '99px',
+                    border: 'none',
+                    background: isActive
+                      ? isMenstrualTab
+                        ? 'linear-gradient(135deg, #FF2A6D, #9A1750)'
+                        : 'linear-gradient(135deg, #FF7A29, #FF3B6E)'
+                      : 'transparent',
+                    color: isActive ? '#ffffff' : currentView === 'menstrual' ? '#94a3b8' : '#7A5C4C',
+                    fontWeight: isActive ? '700' : '600',
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 4px 14px rgba(255,42,109,0.35)' : 'none'
+                  }}
+                >
+                  <Icon size={16} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </nav>
 
-      {/* --- PAGE CONTENT CONTAINER --- */}
-      <main style={{ maxWidth: '1120px', margin: '24px auto', padding: '0 16px' }}>
+      {/* MAIN CONTAINER */}
+      <main style={{ maxWidth: '1120px', margin: '32px auto 0', padding: '0 16px' }}>
         {isLoading ? (
-          <div style={{ padding: '60px', textAlign: 'center', color: '#731358' }}>
-            <p style={{ fontWeight: '600', fontSize: '1.1rem' }}>Connecting to Supabase Database...</p>
+          <div style={{ padding: '80px 0', textAlign: 'center', color: '#FF2A6D' }}>
+            <div style={{ display: 'inline-block', padding: '16px', borderRadius: '50%', background: 'rgba(255,42,109,0.12)', marginBottom: '12px' }}>
+              <HeartPulse size={32} />
+            </div>
+            <p style={{ fontWeight: '700', fontSize: '1.05rem', color: currentView === 'menstrual' ? '#ffffff' : '#3A1F16' }}>Loading data...</p>
           </div>
         ) : (
           <>
-            {/* PAGE 1: DASHBOARD */}
+            {/* VIEW 1: DASHBOARD */}
             {currentView === 'dashboard' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                {/* 4 KPI Cards Grid */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 <div className="grid-4">
-                  {/* Balance Card */}
                   <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>BALANCE</span>
-                      <Wallet size={18} color="#731358" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL SPENT</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: '#fef2f2', color: '#FF3B6E' }}><TrendingDown size={18} /></div>
                     </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#1e293b', marginTop: '8px' }}>
-                      {formatCurrency(currentMonthBalance)}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                      This month net
-                    </div>
-                  </div>
-
-                  {/* Income Card with Add Affordance */}
-                  <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>INCOME</span>
-                      <button
-                        onClick={() => setIsAddIncomeOpen(true)}
-                        style={{
-                          background: 'rgba(115, 19, 88, 0.1)',
-                          color: '#731358',
-                          border: 'none',
-                          borderRadius: '6px',
-                          padding: '2px 8px',
-                          fontSize: '0.75rem',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '2px'
-                        }}
-                      >
-                        <Plus size={12} /> Add
-                      </button>
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#10b981', marginTop: '8px' }}>
-                      {formatCurrency(currentMonthIncomeTotal)}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                      Total logged income
-                    </div>
-                  </div>
-
-                  {/* Spent Card */}
-                  <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>SPENT</span>
-                      <TrendingDown size={18} color="#ef4444" />
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#ef4444', marginTop: '8px' }}>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#3A1F16', marginTop: '12px', letterSpacing: '-0.02em' }}>
                       {formatCurrency(currentMonthExpensesTotal)}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                      Total logged expenses
-                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>This month's expenses</span>
                   </div>
 
-                  {/* Savings Card */}
                   <div className="glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>SAVINGS</span>
-                      <PiggyBank size={18} color="#731358" />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL BUDGET</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255,122,41,0.12)', color: '#FF7A29' }}><PiggyBank size={18} /></div>
                     </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#731358', marginTop: '8px' }}>
-                      {formatCurrency(currentMonthSavings)}
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#3A1F16', marginTop: '12px', letterSpacing: '-0.02em' }}>
+                      {formatCurrency(currentMonthBudgetTotal)}
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '4px' }}>
-                      Positive balance
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Allocated limits</span>
+                  </div>
+
+                  <div className="glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>BUDGET LEFT</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: remainingBudget >= 0 ? '#ecfdf5' : '#fef2f2', color: remainingBudget >= 0 ? '#10b981' : '#FF3B6E' }}><Wallet size={18} /></div>
                     </div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: remainingBudget >= 0 ? '#10b981' : '#FF3B6E', marginTop: '12px', letterSpacing: '-0.02em' }}>
+                      {formatCurrency(remainingBudget)}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Available balance</span>
+                  </div>
+
+                  <div className="glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>LOGGED EXPENSES</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: '#FFF8ED', color: '#B8860B' }}><Receipt size={18} /></div>
+                    </div>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#3A1F16', marginTop: '12px', letterSpacing: '-0.02em' }}>
+                      {expenses.filter((e) => e.expense_date?.startsWith(currentMonthKey)).length}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Transactions count</span>
                   </div>
                 </div>
 
-                {/* Charts Row */}
+                {/* CHARTS ROW */}
                 <div className="grid-2">
-                  {/* Area Chart: Monthly Spending Trend */}
                   <div className="glass-card">
-                    <h3 style={{ fontSize: '1rem', color: '#1e293b', marginBottom: '16px' }}>
-                      Monthly Spending Trend
-                    </h3>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16', marginBottom: '20px' }}>Monthly Spending Trend</h3>
                     {monthlyTrendData.every((d) => d.amount === 0) ? (
-                      <div
-                        style={{
-                          height: '220px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#94a3b8'
-                        }}
-                      >
+                      <div style={{ height: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#7A5C4C' }}>
                         <AlertCircle size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
                         <p style={{ fontSize: '0.9rem' }}>No spending data for the last 6 months</p>
                       </div>
@@ -516,43 +520,26 @@ export default function App() {
                           <AreaChart data={monthlyTrendData}>
                             <defs>
                               <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#731358" stopOpacity={0.4} />
-                                <stop offset="95%" stopColor="#731358" stopOpacity={0.0} />
+                                <stop offset="5%" stopColor="#FF7A29" stopOpacity={0.4} />
+                                <stop offset="95%" stopColor="#FF3B6E" stopOpacity={0.0} />
                               </linearGradient>
                             </defs>
-                            <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} tickLine={false} />
-                            <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} />
+                            <XAxis dataKey="month" stroke="#7A5C4C" fontSize={12} tickLine={false} />
+                            <YAxis stroke="#7A5C4C" fontSize={12} tickLine={false} />
                             <Tooltip formatter={(value) => formatCurrency(value)} />
-                            <Area
-                              type="monotone"
-                              dataKey="amount"
-                              stroke="#731358"
-                              strokeWidth={2}
-                              fillOpacity={1}
-                              fill="url(#trendGradient)"
-                            />
+                            <Area type="monotone" dataKey="amount" stroke="#FF7A29" strokeWidth={2.5} fillOpacity={1} fill="url(#trendGradient)" />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
                     )}
                   </div>
 
-                  {/* Donut Chart: Current Month Category Breakdown */}
                   <div className="glass-card">
-                    <h3 style={{ fontSize: '1rem', color: '#1e293b', marginBottom: '16px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16', marginBottom: '20px' }}>
                       Category Breakdown ({formatMonthLabel(currentMonthKey)})
                     </h3>
                     {categoryBreakdownData.length === 0 ? (
-                      <div
-                        style={{
-                          height: '220px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: '#94a3b8'
-                        }}
-                      >
+                      <div style={{ height: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#7A5C4C' }}>
                         <AlertCircle size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
                         <p style={{ fontSize: '0.9rem' }}>No expenses logged this month</p>
                       </div>
@@ -561,13 +548,7 @@ export default function App() {
                         <div style={{ width: '50%', height: '100%' }}>
                           <ResponsiveContainer>
                             <PieChart>
-                              <Pie
-                                data={categoryBreakdownData}
-                                innerRadius={50}
-                                outerRadius={75}
-                                paddingAngle={3}
-                                dataKey="value"
-                              >
+                              <Pie data={categoryBreakdownData} innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
                                 {categoryBreakdownData.map((entry, index) => (
                                   <Cell key={`cell-${index}`} fill={entry.color} />
                                 ))}
@@ -576,43 +557,14 @@ export default function App() {
                             </PieChart>
                           </ResponsiveContainer>
                         </div>
-
-                        {/* Color Dot Legend */}
-                        <div
-                          style={{
-                            width: '50%',
-                            maxHeight: '180px',
-                            overflowY: 'auto',
-                            paddingLeft: '12px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '8px'
-                          }}
-                        >
+                        <div style={{ width: '50%', maxHeight: '180px', overflowY: 'auto', paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                           {categoryBreakdownData.map((item, idx) => (
-                            <div
-                              key={idx}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                fontSize: '0.8rem'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span
-                                  style={{
-                                    width: '10px',
-                                    height: '10px',
-                                    borderRadius: '50%',
-                                    background: item.color
-                                  }}
-                                />
-                                <span style={{ color: '#1e293b' }}>{item.name}</span>
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
+                                <span style={{ color: '#3A1F16', fontWeight: '600' }}>{item.name}</span>
                               </div>
-                              <span style={{ fontWeight: '600', color: '#64748b' }}>
-                                {formatCurrency(item.value)}
-                              </span>
+                              <span style={{ fontWeight: '800', color: '#3A1F16' }}>{formatCurrency(item.value)}</span>
                             </div>
                           ))}
                         </div>
@@ -621,63 +573,28 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Bottom Row: Budget Progress & Recent Transactions */}
+                {/* BOTTOM ROW */}
                 <div className="grid-2">
-                  {/* Budget Progress Bars */}
                   <div className="glass-card">
-                    <h3 style={{ fontSize: '1rem', color: '#1e293b', marginBottom: '16px' }}>
-                      Budget Progress
-                    </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16', marginBottom: '20px' }}>Budget Progress</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                       {categories.slice(0, 6).map((cat) => {
                         const spent = categorySpendMap[cat.id] || 0;
-                        const budgetObj = budgets.find(
-                          (b) => b.category_id === cat.id && b.month === currentMonthKey
-                        );
+                        const budgetObj = budgets.find((b) => b.category_id === cat.id && b.month === currentMonthKey);
                         const budgetAmt = budgetObj ? budgetObj.amount : 0;
                         const isOver = budgetAmt > 0 && spent > budgetAmt;
                         const pct = budgetAmt > 0 ? Math.min(Math.round((spent / budgetAmt) * 100), 100) : 0;
 
                         return (
                           <div key={cat.id}>
-                            <div
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                fontSize: '0.85rem',
-                                marginBottom: '4px'
-                              }}
-                            >
-                              <span style={{ fontWeight: '500', color: '#1e293b' }}>{cat.name}</span>
-                              <span
-                                style={{
-                                  color: isOver ? '#ef4444' : '#64748b',
-                                  fontWeight: isOver ? '700' : '500'
-                                }}
-                              >
-                                {formatCurrency(spent)}{' '}
-                                <span style={{ color: '#94a3b8' }}>
-                                  / {budgetAmt > 0 ? formatCurrency(budgetAmt) : 'No Budget'}
-                                </span>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                              <span style={{ fontWeight: '700', color: '#3A1F16' }}>{cat.name}</span>
+                              <span style={{ color: isOver ? '#FF3B6E' : '#7A5C4C', fontWeight: isOver ? '800' : '600' }}>
+                                {formatCurrency(spent)} <span style={{ color: '#7A5C4C', opacity: 0.8 }}>/ {budgetAmt > 0 ? formatCurrency(budgetAmt) : 'No Limit'}</span>
                               </span>
                             </div>
-                            <div
-                              style={{
-                                height: '8px',
-                                width: '100%',
-                                background: 'rgba(226, 232, 240, 0.6)',
-                                borderRadius: '4px',
-                                overflow: 'hidden'
-                              }}
-                            >
-                              <div
-                                style={{
-                                  height: '100%',
-                                  width: `${pct}%`,
-                                  background: isOver ? '#ef4444' : '#731358',
-                                  transition: 'width 0.3s ease'
-                                }}
-                              />
+                            <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: isOver ? '#FF3B6E' : 'linear-gradient(90deg, #FF7A29, #FFC93C)', borderRadius: '99px', transition: 'width 0.3s ease' }} />
                             </div>
                           </div>
                         );
@@ -685,79 +602,35 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Recent Transactions List */}
                   <div className="glass-card">
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '16px'
-                      }}
-                    >
-                      <h3 style={{ fontSize: '1rem', color: '#1e293b' }}>Recent Transactions</h3>
-                      <button
-                        onClick={() => setIsAddExpenseOpen(true)}
-                        style={{
-                          background: '#731358',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '8px',
-                          padding: '6px 12px',
-                          fontSize: '0.8rem',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}
-                      >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16' }}>Recent Transactions</h3>
+                      <button className="btn-primary" style={{ height: '34px', padding: '0 12px', fontSize: '0.8rem' }} onClick={() => setIsAddExpenseOpen(true)}>
                         <Plus size={14} /> Add Expense
                       </button>
                     </div>
 
                     {recentExpenses.length === 0 ? (
-                      <div style={{ padding: '30px 0', textAlign: 'center', color: '#94a3b8' }}>
+                      <div style={{ padding: '40px 0', textAlign: 'center', color: '#7A5C4C' }}>
                         <Receipt size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
                         <p style={{ fontSize: '0.9rem' }}>No expenses recorded in database.</p>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                         {recentExpenses.map((e) => {
                           const cat = categories.find((c) => c.id === e.category_id);
                           return (
-                            <div
-                              key={e.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '10px 12px',
-                                background: 'rgba(255, 255, 255, 0.5)',
-                                borderRadius: '10px'
-                              }}
-                            >
+                            <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: '#ffffff', borderRadius: '14px', border: '1px solid #F0DCC0' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <span
-                                  style={{
-                                    width: '12px',
-                                    height: '12px',
-                                    borderRadius: '50%',
-                                    background: cat ? cat.color : '#94a3b8'
-                                  }}
-                                />
+                                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: cat ? cat.color : '#7A5C4C', flexShrink: 0 }} />
                                 <div>
-                                  <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1e293b' }}>
-                                    {e.description}
-                                  </div>
-                                  <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                    {cat ? cat.name : 'Uncategorized'} • {e.expense_date}
+                                  <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#3A1F16' }}>{e.description}</div>
+                                  <div style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '2px' }}>
+                                    {cat ? cat.name : 'Other'} • {e.expense_date} • <span className="user-badge" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>{e.added_by || 'Pooja'}</span>
                                   </div>
                                 </div>
                               </div>
-                              <div style={{ fontWeight: '700', color: '#ef4444', fontSize: '0.95rem' }}>
-                                -{formatCurrency(e.amount)}
-                              </div>
+                              <div style={{ fontWeight: '800', color: '#FF3B6E', fontSize: '0.95rem' }}>-{formatCurrency(e.amount)}</div>
                             </div>
                           );
                         })}
@@ -768,101 +641,79 @@ export default function App() {
               </div>
             )}
 
-            {/* PAGE 2: TRANSACTIONS */}
+            {/* VIEW 2: TRANSACTIONS */}
             {currentView === 'transactions' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px'
-                  }}
-                >
-                  <h2 style={{ fontSize: '1.4rem', color: '#1e293b' }}>Transactions</h2>
-                  <button
-                    onClick={() => setIsAddExpenseOpen(true)}
-                    style={{
-                      background: '#731358',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '10px',
-                      padding: '10px 18px',
-                      fontSize: '0.9rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}
-                  >
-                    <Plus size={16} /> Add Expense
-                  </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#3A1F16' }}>Transactions</h2>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button className="btn-secondary" onClick={handleExportCSV}>
+                      <Download size={16} /> Export CSV
+                    </button>
+                    <button className="btn-primary" onClick={() => setIsAddExpenseOpen(true)}>
+                      <Plus size={16} /> Add Expense
+                    </button>
+                  </div>
                 </div>
 
-                {/* Filters */}
-                <div
-                  className="glass-card"
-                  style={{
-                    display: 'flex',
-                    gap: '16px',
-                    flexWrap: 'wrap',
-                    alignItems: 'center'
-                  }}
-                >
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 200px' }}>
-                    <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                      Filter Category
-                    </label>
-                    <select
-                      value={selectedCategoryFilter}
-                      onChange={(e) => setSelectedCategoryFilter(e.target.value)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        outline: 'none',
-                        fontSize: '0.9rem',
-                        background: 'white'
-                      }}
-                    >
+                <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SEARCH KEYWORD</label>
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <Search size={16} color="#7A5C4C" style={{ position: 'absolute', left: '12px' }} />
+                      <input
+                        type="text"
+                        placeholder="Filter e.g. flower, tamil..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        style={{ paddingLeft: '36px', paddingRight: '32px' }}
+                      />
+                      {searchQuery && (
+                        <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: '#7A5C4C', cursor: 'pointer' }}>
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>CATEGORY</label>
+                    <select value={selectedCategoryFilter} onChange={(e) => setSelectedCategoryFilter(e.target.value)}>
                       <option value="ALL">All Categories</option>
                       {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
+                        <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: '1 1 200px' }}>
-                    <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                      Filter Month
-                    </label>
-                    <input
-                      type="month"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        outline: 'none',
-                        fontSize: '0.9rem',
-                        background: 'white'
-                      }}
-                    />
+                  <div>
+                    <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTH</label>
+                    <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
                   </div>
                 </div>
 
-                {/* Table */}
-                <div className="glass-card" style={{ padding: '0', overflow: 'hidden' }}>
+                {searchQuery.trim() !== '' && (
+                  <div className="glass-card" style={{ background: 'rgba(255, 122, 41, 0.1)', border: '1px solid rgba(255, 122, 41, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '16px 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{ background: '#FF7A29', color: 'white', borderRadius: '50%', padding: '6px', display: 'flex' }}><Search size={16} /></div>
+                      <span style={{ fontSize: '0.92rem', color: '#3A1F16' }}>
+                        Found <strong>{filteredExpenses.length}</strong> transaction{filteredExpenses.length === 1 ? '' : 's'} matching <strong style={{ color: '#E8600F' }}>"{searchQuery}"</strong>
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#E8600F' }}>
+                      Total: {formatCurrency(searchTotalAmount)}
+                    </div>
+                  </div>
+                )}
+
+                <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
                   <div className="table-container">
                     {filteredExpenses.length === 0 ? (
-                      <div style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
+                      <div style={{ padding: '50px 20px', textAlign: 'center', color: '#7A5C4C' }}>
                         <AlertCircle size={36} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <p style={{ fontSize: '0.95rem' }}>No transactions match your current filter.</p>
+                        <p style={{ fontSize: '0.92rem' }}>
+                          {searchQuery ? `No transactions match "${searchQuery}".` : 'No transactions found for selected filters.'}
+                        </p>
                       </div>
                     ) : (
                       <table>
@@ -870,6 +721,7 @@ export default function App() {
                           <tr>
                             <th>Description</th>
                             <th>Category</th>
+                            <th>Added By</th>
                             <th>Date</th>
                             <th>Amount</th>
                             <th style={{ textAlign: 'right' }}>Actions</th>
@@ -880,35 +732,24 @@ export default function App() {
                             const cat = categories.find((c) => c.id === exp.category_id);
                             return (
                               <tr key={exp.id}>
-                                <td style={{ fontWeight: '600' }}>{exp.description}</td>
+                                <td style={{ fontWeight: '700', color: '#3A1F16' }}>{exp.description}</td>
                                 <td>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span
-                                      style={{
-                                        width: '10px',
-                                        height: '10px',
-                                        borderRadius: '50%',
-                                        background: cat ? cat.color : '#94a3b8'
-                                      }}
-                                    />
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cat ? cat.color : '#7A5C4C' }} />
                                     {cat ? cat.name : 'Other'}
                                   </div>
                                 </td>
-                                <td style={{ color: '#64748b' }}>{exp.expense_date}</td>
-                                <td style={{ color: '#ef4444', fontWeight: '700' }}>
-                                  -{formatCurrency(exp.amount)}
+                                <td>
+                                  <span className="user-badge">
+                                    <User size={12} /> {exp.added_by || 'Pooja'}
+                                  </span>
                                 </td>
+                                <td style={{ color: '#7A5C4C' }}>{exp.expense_date}</td>
+                                <td style={{ color: '#FF3B6E', fontWeight: '800' }}>-{formatCurrency(exp.amount)}</td>
                                 <td style={{ textAlign: 'right' }}>
                                   <button
                                     onClick={() => setDeleteTargetId(exp.id)}
-                                    style={{
-                                      background: 'rgba(239, 68, 68, 0.1)',
-                                      color: '#ef4444',
-                                      border: 'none',
-                                      borderRadius: '6px',
-                                      padding: '6px 10px',
-                                      cursor: 'pointer'
-                                    }}
+                                    style={{ background: '#fef2f2', color: '#FF3B6E', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}
                                   >
                                     <Trash2 size={14} />
                                   </button>
@@ -924,88 +765,44 @@ export default function App() {
               </div>
             )}
 
-            {/* PAGE 3: BUDGETS */}
+            {/* VIEW 3: BUDGETS */}
             {currentView === 'budgets' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px'
-                  }}
-                >
-                  <h2 style={{ fontSize: '1.4rem', color: '#1e293b' }}>Monthly Budgets</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#3A1F16' }}>Monthly Budgets</h2>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Calendar size={18} color="#731358" />
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      style={{
-                        padding: '8px 12px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.9rem',
-                        background: 'white',
-                        fontWeight: '600',
-                        color: '#1e293b'
-                      }}
-                    >
+                    <Calendar size={18} color="#FF7A29" />
+                    <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} style={{ width: 'auto' }}>
                       {getLast6Months().map((m) => (
-                        <option key={m} value={m}>
-                          {formatMonthLabel(m)}
-                        </option>
+                        <option key={m} value={m}>{formatMonthLabel(m)}</option>
                       ))}
                     </select>
                   </div>
                 </div>
 
-                {/* Summary Cards */}
                 <div className="grid-3">
                   <div className="glass-card">
-                    <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>
-                      TOTAL BUDGET
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#731358', marginTop: '6px' }}>
-                      {formatCurrency(
-                        budgets
-                          .filter((b) => b.month === selectedMonth)
-                          .reduce((acc, b) => acc + Number(b.amount), 0)
-                      )}
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL BUDGET</span>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#FF7A29', marginTop: '8px' }}>
+                      {formatCurrency(budgets.filter((b) => b.month === selectedMonth).reduce((acc, b) => acc + Number(b.amount), 0))}
                     </div>
                   </div>
 
                   <div className="glass-card">
-                    <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>
-                      TOTAL SPENT
-                    </div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#ef4444', marginTop: '6px' }}>
-                      {formatCurrency(
-                        Object.values(categorySpendMap).reduce((a, b) => a + b, 0)
-                      )}
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL SPENT</span>
+                    <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#FF3B6E', marginTop: '8px' }}>
+                      {formatCurrency(Object.values(categorySpendMap).reduce((a, b) => a + b, 0))}
                     </div>
                   </div>
 
                   <div className="glass-card">
-                    <div style={{ fontSize: '0.85rem', color: '#64748b', fontWeight: '600' }}>
-                      LEFT TO SPEND
-                    </div>
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>LEFT TO SPEND</span>
                     {(() => {
-                      const totalB = budgets
-                        .filter((b) => b.month === selectedMonth)
-                        .reduce((acc, b) => acc + Number(b.amount), 0);
+                      const totalB = budgets.filter((b) => b.month === selectedMonth).reduce((acc, b) => acc + Number(b.amount), 0);
                       const totalS = Object.values(categorySpendMap).reduce((a, b) => a + b, 0);
                       const left = totalB - totalS;
                       return (
-                        <div
-                          style={{
-                            fontSize: '1.6rem',
-                            fontWeight: '700',
-                            color: left >= 0 ? '#10b981' : '#ef4444',
-                            marginTop: '6px'
-                          }}
-                        >
+                        <div style={{ fontSize: '1.6rem', fontWeight: '800', color: left >= 0 ? '#10b981' : '#FF3B6E', marginTop: '8px' }}>
                           {formatCurrency(left)}
                         </div>
                       );
@@ -1013,150 +810,58 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Category Grid */}
                 <div className="grid-3">
                   {categories.map((cat) => {
                     const IconComponent = ICON_MAP[cat.icon] || MoreHorizontal;
                     const spent = categorySpendMap[cat.id] || 0;
-                    const budgetObj = budgets.find(
-                      (b) => b.category_id === cat.id && b.month === selectedMonth
-                    );
+                    const budgetObj = budgets.find((b) => b.category_id === cat.id && b.month === selectedMonth);
                     const budgetAmount = budgetObj ? budgetObj.amount : 0;
                     const isOver = budgetAmount > 0 && spent > budgetAmount;
                     const pct = budgetAmount > 0 ? Math.round((spent / budgetAmount) * 100) : 0;
                     const isEditing = editingBudgetId === cat.id;
 
                     return (
-                      <div key={cat.id} className="glass-card">
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            marginBottom: '12px'
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div
-                              style={{
-                                background: cat.color + '20',
-                                color: cat.color,
-                                padding: '6px',
-                                borderRadius: '8px'
-                              }}
-                            >
-                              <IconComponent size={18} />
+                      <div key={cat.id} className="glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ background: cat.color + '15', color: cat.color, padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                                <IconComponent size={18} />
+                              </div>
+                              <span style={{ fontWeight: '700', color: '#3A1F16', fontSize: '0.95rem' }}>{cat.name}</span>
                             </div>
-                            <span style={{ fontWeight: '600', color: '#1e293b' }}>{cat.name}</span>
+
+                            {!isEditing ? (
+                              <button onClick={() => { setEditingBudgetId(cat.id); setTempBudgetAmount(budgetAmount ? String(budgetAmount) : ''); }} style={{ background: 'none', border: 'none', color: '#7A5C4C', cursor: 'pointer' }}>
+                                <Edit2 size={16} />
+                              </button>
+                            ) : (
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button onClick={() => handleSaveBudget(cat.id)} style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}><Check size={14} /></button>
+                                <button onClick={() => setEditingBudgetId(null)} style={{ background: '#FF3B6E', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}><X size={14} /></button>
+                              </div>
+                            )}
                           </div>
 
-                          {!isEditing ? (
-                            <button
-                              onClick={() => {
-                                setEditingBudgetId(cat.id);
-                                setTempBudgetAmount(budgetAmount ? String(budgetAmount) : '');
-                              }}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#64748b',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <Edit2 size={16} />
-                            </button>
-                          ) : (
-                            <div style={{ display: 'flex', gap: '4px' }}>
-                              <button
-                                onClick={() => handleSaveBudget(cat.id)}
-                                style={{
-                                  background: '#10b981',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  padding: '2px 6px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <Check size={14} />
-                              </button>
-                              <button
-                                onClick={() => setEditingBudgetId(null)}
-                                style={{
-                                  background: '#ef4444',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '4px',
-                                  padding: '2px 6px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                          )}
+                          <div style={{ marginBottom: '14px' }}>
+                            {isEditing ? (
+                              <input type="number" placeholder="Set budget ₹" value={tempBudgetAmount} onChange={(e) => setTempBudgetAmount(e.target.value)} autoFocus />
+                            ) : (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                                <span style={{ color: '#7A5C4C' }}>Spent: {formatCurrency(spent)}</span>
+                                <span style={{ fontWeight: '700', color: '#3A1F16' }}>Budget: {budgetAmount > 0 ? formatCurrency(budgetAmount) : 'Not Set'}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
-                        <div style={{ marginBottom: '12px' }}>
-                          {isEditing ? (
-                            <input
-                              type="number"
-                              placeholder="Set budget ₹"
-                              value={tempBudgetAmount}
-                              onChange={(e) => setTempBudgetAmount(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '6px 8px',
-                                borderRadius: '6px',
-                                border: '1px solid #731358',
-                                fontSize: '0.9rem'
-                              }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                fontSize: '0.85rem'
-                              }}
-                            >
-                              <span style={{ color: '#64748b' }}>Spent: {formatCurrency(spent)}</span>
-                              <span style={{ fontWeight: '600', color: '#1e293b' }}>
-                                Budget: {budgetAmount > 0 ? formatCurrency(budgetAmount) : 'Not Set'}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div
-                          style={{
-                            height: '8px',
-                            width: '100%',
-                            background: 'rgba(226, 232, 240, 0.6)',
-                            borderRadius: '4px',
-                            overflow: 'hidden',
-                            marginBottom: '6px'
-                          }}
-                        >
-                          <div
-                            style={{
-                              height: '100%',
-                              width: `${Math.min(pct, 100)}%`,
-                              background: isOver ? '#ef4444' : '#731358',
-                              transition: 'width 0.3s ease'
-                            }}
-                          />
-                        </div>
-
-                        <div
-                          style={{
-                            fontSize: '0.75rem',
-                            textAlign: 'right',
-                            color: isOver ? '#ef4444' : '#64748b',
-                            fontWeight: isOver ? '700' : '500'
-                          }}
-                        >
-                          {budgetAmount > 0 ? `${pct}% used` : 'No Limit'}
+                        <div>
+                          <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden', marginBottom: '6px' }}>
+                            <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: isOver ? '#FF3B6E' : 'linear-gradient(90deg, #FF7A29, #FFC93C)', borderRadius: '99px', transition: 'width 0.3s ease' }} />
+                          </div>
+                          <div style={{ fontSize: '0.75rem', textAlign: 'right', color: isOver ? '#FF3B6E' : '#7A5C4C', fontWeight: isOver ? '700' : '500' }}>
+                            {budgetAmount > 0 ? `${pct}% limit used` : 'No Limit Set'}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1164,140 +869,202 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* VIEW 4: MENSTRUAL TRACKER (DARK MODE THEME) */}
+            {currentView === 'menstrual' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+                {/* TOP SUMMARY CARDS */}
+                <div className="grid-3">
+                  <div className="dark-glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>AVG FLOW DURATION</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2A6D' }}>
+                        <Clock size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>
+                      {avgCycleDays > 0 ? `${avgCycleDays} Days` : 'No Data'}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Average period length</span>
+                  </div>
+
+                  <div className="dark-glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>TOTAL LOGGED CYCLES</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2A6D' }}>
+                        <Flame size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>
+                      {cycles.length}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Saved monthly cycles</span>
+                  </div>
+
+                  <div className="dark-glass-card">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>LAST RECORDED PERIOD</span>
+                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2A6D' }}>
+                        <Sparkles size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FF2A6D', marginTop: '14px' }}>
+                      {cycles.length > 0 ? formatDateFormatted(cycles[0].start_date) : 'None Yet'}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Start date of recent period</span>
+                  </div>
+                </div>
+
+                {/* CYCLE LOGGER FORM */}
+                <div className="dark-glass-card" style={{ border: '1px solid rgba(255, 42, 109, 0.4)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #FF2A6D, #9A1750)', padding: '8px', borderRadius: '10px', color: 'white' }}>
+                      <HeartPulse size={20} />
+                    </div>
+                    <div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>Log Period Cycle</h3>
+                      <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Select start date and end date of your cycle</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleAddCycle} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', alignItems: 'end' }}>
+                    <div>
+                      <label style={{ fontSize: '0.78rem', color: '#FF2A6D', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
+                      <input
+                        type="date"
+                        required
+                        className="dark-input"
+                        value={cycleForm.start_date}
+                        onChange={(e) => setCycleForm({ ...cycleForm, start_date: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize: '0.78rem', color: '#FF2A6D', fontWeight: '700', display: 'block', marginBottom: '6px' }}>END DATE</label>
+                      <input
+                        type="date"
+                        required
+                        className="dark-input"
+                        value={cycleForm.end_date}
+                        onChange={(e) => setCycleForm({ ...cycleForm, end_date: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <button type="submit" className="btn-neon" style={{ width: '100%' }}>
+                        <Plus size={16} /> Save Period Range
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* MONTHLY GRID DISPLAY */}
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={18} color="#FF2A6D" /> Period History Grid
+                  </h3>
+
+                  {cycles.length === 0 ? (
+                    <div className="dark-glass-card" style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                      <HeartPulse size={40} style={{ marginBottom: '12px', opacity: 0.4, color: '#FF2A6D' }} />
+                      <p style={{ fontSize: '0.95rem' }}>No period cycles logged yet. Use the form above to record your first cycle.</p>
+                    </div>
+                  ) : (
+                    <div className="grid-3">
+                      {cycles.map((item) => {
+                        const days = calculateDaysDiff(item.start_date, item.end_date);
+                        return (
+                          <div key={item.id} className="dark-glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                            <div>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: '800', color: '#FF2A6D', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                  {formatMonthLabel(getMonthKey(item.start_date))}
+                                </span>
+                                <button
+                                  onClick={() => handleDeleteCycle(item.id)}
+                                  style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                                <div style={{ background: 'rgba(15, 8, 24, 0.6)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255, 59, 110, 0.15)' }}>
+                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '600' }}>START DATE</div>
+                                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#ffffff', marginTop: '2px' }}>
+                                    {formatDateFormatted(item.start_date)}
+                                  </div>
+                                </div>
+
+                                <div style={{ background: 'rgba(15, 8, 24, 0.6)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255, 59, 110, 0.15)' }}>
+                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '600' }}>END DATE</div>
+                                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#ffffff', marginTop: '2px' }}>
+                                    {formatDateFormatted(item.end_date)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid rgba(255, 59, 110, 0.15)' }}>
+                              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Total Duration</span>
+                              <span style={{ fontSize: '0.9rem', fontWeight: '800', background: 'linear-gradient(135deg, #FF2A6D, #9A1750)', color: 'white', padding: '4px 12px', borderRadius: '99px', boxShadow: '0 2px 10px rgba(255,42,109,0.3)' }}>
+                                {days} Days Flow
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>
 
-      {/* --- MODAL: ADD EXPENSE --- */}
+      {/* MODAL: ADD EXPENSE */}
       {isAddExpenseOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            padding: '16px'
-          }}
-        >
-          <div className="glass-card" style={{ width: '100%', maxWidth: '420px', background: 'white' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px'
-              }}
-            >
-              <h3 style={{ fontSize: '1.1rem', color: '#1e293b' }}>Add New Expense</h3>
-              <button
-                onClick={() => setIsAddExpenseOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(58, 31, 22, 0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '420px', background: '#ffffff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#3A1F16' }}>Add New Expense</h3>
+              <button onClick={() => setIsAddExpenseOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4C' }}>
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                  Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  required
-                  placeholder="e.g. 250"
-                  value={expenseForm.amount}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '1rem'
-                  }}
-                />
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>AMOUNT (₹)</label>
+                <input type="number" required placeholder="e.g. 250" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                  Category
-                </label>
-                <select
-                  value={expenseForm.category_id}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, category_id: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '0.95rem'
-                  }}
-                >
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>CATEGORY</label>
+                <select value={expenseForm.category_id} onChange={(e) => setExpenseForm({ ...expenseForm, category_id: e.target.value })}>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                  Description
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Flowers and Pooja items"
-                  value={expenseForm.description}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '0.95rem'
-                  }}
-                />
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DESCRIPTION</label>
+                <input type="text" placeholder="e.g. Flowers and Pooja items" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
               </div>
 
               <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Date</label>
-                <input
-                  type="date"
-                  required
-                  value={expenseForm.expense_date}
-                  onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '0.95rem'
-                  }}
-                />
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ADDED BY (PERSON NAME)</label>
+                <input type="text" placeholder="e.g. Pooja / Tamil" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} />
               </div>
 
-              <button
-                type="submit"
-                style={{
-                  background: '#731358',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  marginTop: '8px'
-                }}
-              >
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DATE</label>
+                <input type="date" required value={expenseForm.expense_date} onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} />
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
                 Save Expense
               </button>
             </form>
@@ -1305,170 +1072,18 @@ export default function App() {
         </div>
       )}
 
-      {/* --- MODAL: ADD INCOME --- */}
-      {isAddIncomeOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            padding: '16px'
-          }}
-        >
-          <div className="glass-card" style={{ width: '100%', maxWidth: '420px', background: 'white' }}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px'
-              }}
-            >
-              <h3 style={{ fontSize: '1.1rem', color: '#1e293b' }}>Add Income</h3>
-              <button
-                onClick={() => setIsAddIncomeOpen(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddIncome} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                  Amount (₹)
-                </label>
-                <input
-                  type="number"
-                  required
-                  placeholder="e.g. 50000"
-                  value={incomeForm.amount}
-                  onChange={(e) => setIncomeForm({ ...incomeForm, amount: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '1rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>
-                  Description
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Monthly Salary"
-                  value={incomeForm.description}
-                  onChange={(e) => setIncomeForm({ ...incomeForm, description: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '0.95rem'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: '600' }}>Date</label>
-                <input
-                  type="date"
-                  required
-                  value={incomeForm.income_date}
-                  onChange={(e) => setIncomeForm({ ...incomeForm, income_date: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    marginTop: '4px',
-                    fontSize: '0.95rem'
-                  }}
-                />
-              </div>
-
-              <button
-                type="submit"
-                style={{
-                  background: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  marginTop: '8px'
-                }}
-              >
-                Save Income
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL: DELETE CONFIRMATION --- */}
+      {/* MODAL: DELETE CONFIRMATION */}
       {deleteTargetId && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.4)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 200,
-            padding: '16px'
-          }}
-        >
-          <div className="glass-card" style={{ width: '100%', maxWidth: '360px', background: 'white' }}>
-            <h3 style={{ fontSize: '1.1rem', color: '#1e293b', marginBottom: '8px' }}>
-              Confirm Delete
-            </h3>
-            <p style={{ fontSize: '0.9rem', color: '#64748b', marginBottom: '20px' }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(58, 31, 22, 0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '360px', background: '#ffffff' }}>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#3A1F16', marginBottom: '8px' }}>Confirm Delete</h3>
+            <p style={{ fontSize: '0.9rem', color: '#7A5C4C', marginBottom: '24px' }}>
               Are you sure you want to delete this expense record from Supabase?
             </p>
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setDeleteTargetId(null)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: 'white',
-                  color: '#64748b',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteExpense}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  border: 'none',
-                  background: '#ef4444',
-                  color: 'white',
-                  fontWeight: '600',
-                  cursor: 'pointer'
-                }}
-              >
-                Delete
-              </button>
+              <button className="btn-secondary" onClick={() => setDeleteTargetId(null)}>Cancel</button>
+              <button className="btn-primary" style={{ background: '#FF3B6E' }} onClick={handleDeleteExpense}>Delete</button>
             </div>
           </div>
         </div>

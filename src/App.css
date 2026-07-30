@@ -1,184 +1,282 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
+/* ==========================================================================
+   TAMIL POOJA EXPENSE TRACKER & MENSTRUAL TRACKER - MARIGOLD & DARK ROSES UI
+   ========================================================================== */
 
-  &:hover {
-    border-color: var(--accent-border);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+:root {
+  --marigold: #FF7A29;
+  --marigold-dark: #E8600F;
+  --kumkum: #FF3B6E;
+  --turmeric: #FFC93C;
+  --brass: #B8860B;
+  --cream: #FFF8ED;
+  --cream-deep: #FFEFD6;
+  --ink: #3A1F16;
+  --ink-soft: #7A5C4C;
+  --line: #F0DCC0;
+
+  /* Dark Theme Palette for Menstrual Tracker */
+  --dark-bg: #0d0714;
+  --dark-card: rgba(28, 15, 42, 0.75);
+  --dark-border: rgba(255, 59, 110, 0.25);
+  --neon-pink: #FF2A6D;
+  --neon-glow: rgba(255, 42, 109, 0.2);
 }
 
-.hero {
-  position: relative;
-
-  .base,
-  .framework,
-  .vite {
-    inset-inline: 0;
-    margin: 0 auto;
-  }
-
-  .base {
-    width: 170px;
-    position: relative;
-    z-index: 0;
-  }
-
-  .framework,
-  .vite {
-    position: absolute;
-  }
-
-  .framework {
-    z-index: 1;
-    top: 34px;
-    height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
-  }
-
-  .vite {
-    z-index: 0;
-    top: 107px;
-    height: 26px;
-    width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
-  }
-}
-
-#center {
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
-
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
-  }
-}
-
-#next-steps {
-  display: flex;
-  border-top: 1px solid var(--border);
-  text-align: left;
-
-  & > div {
-    flex: 1 1 0;
-    padding: 32px;
-    @media (max-width: 1024px) {
-      padding: 24px 20px;
-    }
-  }
-
-  .icon {
-    margin-bottom: 16px;
-    width: 22px;
-    height: 22px;
-  }
-
-  @media (max-width: 1024px) {
-    flex-direction: column;
-    text-align: center;
-  }
-}
-
-#docs {
-  border-right: 1px solid var(--border);
-
-  @media (max-width: 1024px) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
-
-#next-steps ul {
-  list-style: none;
+* {
+  box-sizing: border-box;
+  margin: 0;
   padding: 0;
-  display: flex;
-  gap: 8px;
-  margin: 32px 0 0;
-
-  .logo {
-    height: 18px;
-  }
-
-  a {
-    color: var(--text-h);
-    font-size: 16px;
-    border-radius: 6px;
-    background: var(--social-bg);
-    display: flex;
-    padding: 6px 12px;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: box-shadow 0.3s;
-
-    &:hover {
-      box-shadow: var(--shadow);
-    }
-    .button-icon {
-      height: 18px;
-      width: 18px;
-    }
-  }
-
-  @media (max-width: 1024px) {
-    margin-top: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-
-    li {
-      flex: 1 1 calc(50% - 8px);
-    }
-
-    a {
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-#spacer {
-  height: 88px;
-  border-top: 1px solid var(--border);
-  @media (max-width: 1024px) {
-    height: 48px;
-  }
+body {
+  background:
+    radial-gradient(circle at top left, rgba(255, 201, 60, 0.25), transparent 45%),
+    radial-gradient(circle at bottom right, rgba(255, 59, 110, 0.12), transparent 50%),
+    linear-gradient(160deg, var(--cream), var(--cream-deep));
+  color: var(--ink);
+  min-height: 100vh;
 }
 
-.ticks {
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 239, 214, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--turmeric);
+  border-radius: 99px;
+}
+
+/* Glassmorphism Light Cards */
+.glass-card {
   position: relative;
+  background: rgba(255, 255, 255, 0.68);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 26px 24px 24px;
+  box-shadow: 0 10px 30px -5px rgba(255, 122, 41, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+}
+
+.glass-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--marigold) 0px, var(--marigold) 10px,
+    var(--turmeric) 10px, var(--turmeric) 20px,
+    var(--kumkum) 20px, var(--kumkum) 30px
+  );
+}
+
+/* Menstrual Tracker - Dark Glass Card System */
+.dark-glass-card {
+  position: relative;
+  background: var(--dark-card);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--dark-border);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 10px 30px -5px var(--neon-glow);
+  color: #f8fafc;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dark-glass-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 35px var(--neon-glow);
+}
+
+.glass-nav {
+  background: rgba(255, 248, 237, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 2px solid var(--turmeric);
+  box-shadow: 0 4px 20px rgba(255, 122, 41, 0.08);
+}
+
+/* Layout Engine */
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 20px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Normalized Inputs */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="month"],
+select {
   width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.92rem;
+  outline: none;
+  transition: all 0.2s ease;
+}
 
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: -4.5px;
-    border: 5px solid transparent;
-  }
+input:focus, select:focus {
+  border-color: var(--marigold);
+  box-shadow: 0 0 0 3px rgba(255, 122, 41, 0.18);
+}
 
-  &::before {
-    left: 0;
-    border-left-color: var(--border);
-  }
-  &::after {
-    right: 0;
-    border-right-color: var(--border);
-  }
+/* Dark Mode Form Inputs */
+.dark-input {
+  background: rgba(15, 8, 24, 0.8) !important;
+  border: 1.5px solid rgba(255, 59, 110, 0.4) !important;
+  color: #f8fafc !important;
+}
+
+.dark-input:focus {
+  border-color: var(--neon-pink) !important;
+  box-shadow: 0 0 0 3px var(--neon-glow) !important;
+}
+
+/* Buttons */
+.btn-primary {
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--marigold), var(--kumkum));
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(255, 59, 110, 0.28);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, var(--marigold-dark), var(--kumkum));
+  transform: translateY(-1px);
+}
+
+.btn-neon {
+  height: 42px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, #FF2A6D, #9A1750);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 16px rgba(255, 42, 109, 0.4);
+}
+
+.btn-neon:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 42, 109, 0.6);
+}
+
+.btn-secondary {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: #ffffff;
+  color: var(--ink-soft);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+/* Tables */
+.table-container {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+th {
+  background: rgba(255, 201, 60, 0.18);
+  color: var(--brass);
+  font-weight: 800;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--turmeric);
+}
+
+td {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.92rem;
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* User Badge Pill */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(255, 122, 41, 0.15), rgba(255, 59, 110, 0.15));
+  color: var(--marigold-dark);
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 0.8rem;
+  font-weight: 700;
 }
