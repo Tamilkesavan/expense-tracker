@@ -63,7 +63,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat-5', name: 'Utilities', color: '#B8860B', icon: 'Zap' },
   { id: 'cat-6', name: 'Healthcare', color: '#ef4444', icon: 'HeartPulse' },
   { id: 'cat-7', name: 'Housing', color: '#78716c', icon: 'Home' },
-  { id: 'cat-8', name: 'Travel', color: '#06b6d4', icon: 'Plane' },
+  { id: 'cat-8', name: 'Grocery', color: '#06b6d4', icon: 'ShoppingBag' },
   { id: 'cat-9', name: 'Education', color: '#10b981', icon: 'GraduationCap' },
   { id: 'cat-10', name: 'Other', color: '#7A5C4C', icon: 'MoreHorizontal' },
 ];
