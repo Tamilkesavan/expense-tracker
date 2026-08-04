@@ -29,7 +29,11 @@ import {
   Download,
   Sparkles,
   Flame,
-  Clock
+  Clock,
+  LogOut,
+  Lock,
+  ArrowRight,
+  ShieldCheck
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -43,6 +47,13 @@ import {
   Cell
 } from 'recharts';
 
+// --- ALLOWED USER LOGINS (Tamil, Pooja, Admin) ---
+const ALLOWED_USERS = [
+  { username: 'tamil', password: 'tamil', name: 'Tamil' },
+  { username: 'pooja', password: 'pooja', name: 'Pooja' },
+  { username: 'admin', password: 'kavin', name: 'Kavin' }
+];
+
 // --- SEEDED CATEGORIES ---
 const DEFAULT_CATEGORIES = [
   { id: 'cat-1', name: 'Food & Dining', color: '#FF7A29', icon: 'Utensils' },
@@ -52,7 +63,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat-5', name: 'Utilities', color: '#B8860B', icon: 'Zap' },
   { id: 'cat-6', name: 'Healthcare', color: '#ef4444', icon: 'HeartPulse' },
   { id: 'cat-7', name: 'Housing', color: '#78716c', icon: 'Home' },
-  { id: 'cat-8', name: 'Grocery', color: '#06b6d4', icon: 'vegetables' },
+  { id: 'cat-8', name: 'Travel', color: '#06b6d4', icon: 'Plane' },
   { id: 'cat-9', name: 'Education', color: '#10b981', icon: 'GraduationCap' },
   { id: 'cat-10', name: 'Other', color: '#7A5C4C', icon: 'MoreHorizontal' },
 ];
@@ -105,42 +116,79 @@ const calculateDaysDiff = (start, end) => {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard | transactions | budgets | menstrual
+  // --- AUTHENTICATION STATE (INITIALIZED EMPTY) ---
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('pooja_suite_auth') === 'true';
+  });
+  const [currentUser, setCurrentUser] = useState(() => {
+    return localStorage.getItem('pooja_suite_username') || 'Tamil';
+  });
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  // --- VIEW STATE ---
+  const [currentView, setCurrentView] = useState('dashboard');
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [cycles, setCycles] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- FETCH DATA FROM SUPABASE ---
+  // --- FETCH DATA WHEN AUTHENTICATED ---
   useEffect(() => {
-    fetchCloudData();
-  }, []);
+    if (isAuthenticated) {
+      fetchCloudData();
+    } else {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated]);
 
   const fetchCloudData = async () => {
     setIsLoading(true);
 
-    // Fetch expenses
-    const { data: expData, error: expErr } = await supabase
-      .from('expenses')
-      .select('*')
-      .order('expense_date', { ascending: false });
-    if (!expErr && expData) setExpenses(expData);
+    const { data: expData } = await supabase.from('expenses').select('*').order('expense_date', { ascending: false });
+    if (expData) setExpenses(expData);
 
-    // Fetch budgets
-    const { data: bdgData, error: bdgErr } = await supabase
-      .from('budgets')
-      .select('*');
-    if (!bdgErr && bdgData) setBudgets(bdgData);
+    const { data: bdgData } = await supabase.from('budgets').select('*');
+    if (bdgData) setBudgets(bdgData);
 
-    // Fetch menstrual cycles
-    const { data: cycData, error: cycErr } = await supabase
-      .from('menstrual_cycles')
-      .select('*')
-      .order('start_date', { ascending: false });
-    if (!cycErr && cycData) setCycles(cycData);
+    const { data: cycData } = await supabase.from('menstrual_cycles').select('*').order('start_date', { ascending: false });
+    if (cycData) setCycles(cycData);
 
     setIsLoading(false);
+  };
+
+  // --- LOGIN HANDLER ---
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+    const inputUser = authUsername.trim().toLowerCase();
+
+    const foundUser = ALLOWED_USERS.find(
+      (u) => u.username.toLowerCase() === inputUser && u.password === authPassword
+    );
+
+    if (foundUser) {
+      localStorage.setItem('pooja_suite_auth', 'true');
+      localStorage.setItem('pooja_suite_username', foundUser.name);
+      setIsAuthenticated(true);
+      setCurrentUser(foundUser.name);
+      setExpenseForm((prev) => ({ ...prev, added_by: foundUser.name }));
+      setAuthError('');
+      setAuthUsername('');
+      setAuthPassword('');
+    } else {
+      setAuthError('Invalid username or password!');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('pooja_suite_auth');
+    localStorage.removeItem('pooja_suite_username');
+    setIsAuthenticated(false);
+    setExpenses([]);
+    setBudgets([]);
+    setCycles([]);
   };
 
   // --- FILTER & SEARCH STATES ---
@@ -156,7 +204,7 @@ export default function App() {
     amount: '',
     category_id: DEFAULT_CATEGORIES[0].id,
     description: '',
-    added_by: '',
+    added_by: currentUser,
     expense_date: new Date().toISOString().split('T')[0]
   });
 
@@ -260,7 +308,7 @@ export default function App() {
       return [
         `"${(exp.description || '').replace(/"/g, '""')}"`,
         `"${cat ? cat.name : 'Other'}"`,
-        `"${(exp.added_by || 'Pooja').replace(/"/g, '""')}"`,
+        `"${(exp.added_by || currentUser).replace(/"/g, '""')}"`,
         `"${exp.expense_date}"`,
         exp.amount
       ];
@@ -286,7 +334,7 @@ export default function App() {
       category_id: expenseForm.category_id,
       amount: Number(expenseForm.amount),
       description: expenseForm.description || 'Expense',
-      added_by: expenseForm.added_by || 'Pooja',
+      added_by: expenseForm.added_by || currentUser,
       expense_date: expenseForm.expense_date,
       created_at: new Date().toISOString()
     };
@@ -300,7 +348,7 @@ export default function App() {
         amount: '',
         category_id: DEFAULT_CATEGORIES[0].id,
         description: '',
-        added_by: '',
+        added_by: currentUser,
         expense_date: new Date().toISOString().split('T')[0]
       });
     } else {
@@ -338,7 +386,6 @@ export default function App() {
     }
   };
 
-  // --- MENSTRUAL TRACKER CYCLE HANDLER ---
   const handleAddCycle = async (e) => {
     e.preventDefault();
     if (!cycleForm.start_date || !cycleForm.end_date) return;
@@ -383,6 +430,104 @@ export default function App() {
       .slice(0, 5);
   }, [expenses]);
 
+  // --- GLOSSY COLOR LOGIN PAGE (NO DISPLAY NAMES, NO AUTOFILL) ---
+  if (!isAuthenticated) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          position: 'relative',
+          overflow: 'hidden',
+          background: 'radial-gradient(circle at 10% 20%, rgba(255, 122, 41, 0.45) 0%, transparent 45%), radial-gradient(circle at 90% 80%, rgba(255, 59, 110, 0.4) 0%, transparent 50%), radial-gradient(circle at 50% 50%, rgba(255, 201, 60, 0.35) 0%, transparent 60%), linear-gradient(145deg, #1f0b18, #3a1128, #180920)'
+        }}
+      >
+        {/* Ambient Glossy Orbs */}
+        <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: '380px', height: '380px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 122, 41, 0.5) 0%, rgba(255, 59, 110, 0.1) 70%)', filter: 'blur(60px)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: '-10%', right: '-5%', width: '420px', height: '420px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 59, 110, 0.5) 0%, rgba(255, 201, 60, 0.1) 70%)', filter: 'blur(70px)', pointerEvents: 'none' }} />
+
+        {/* Glossy Frosted Login Card */}
+        <div
+          className="glass-card"
+          style={{
+            width: '100%',
+            maxWidth: '400px',
+            padding: '36px 30px',
+            background: 'rgba(255, 255, 255, 0.88)',
+            backdropFilter: 'blur(28px)',
+            WebkitBackdropFilter: 'blur(28px)',
+            border: '1.5px solid rgba(255, 255, 255, 0.95)',
+            borderRadius: '24px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25), 0 10px 20px rgba(255, 59, 110, 0.15)',
+            zIndex: 10
+          }}
+        >
+          {/* Header Badge */}
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{ display: 'inline-flex', background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '18px', padding: '16px', marginBottom: '14px', boxShadow: '0 6px 20px rgba(255, 122, 41, 0.35)' }}>
+              <Wallet size={32} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#3A1F16', letterSpacing: '-0.02em' }}>Tamil Pooja Suite</h2>
+            <p style={{ fontSize: '0.85rem', color: '#7A5C4C', marginTop: '4px', fontWeight: '600' }}>Cloud Personal Finance Portal</p>
+          </div>
+
+          {authError && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#ef4444', padding: '10px 14px', borderRadius: '12px', fontSize: '0.82rem', marginBottom: '16px', textAlign: 'center', fontWeight: '600' }}>
+              {authError}
+            </div>
+          )}
+
+          {/* Login Form */}
+          <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>USERNAME</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <User size={16} color="#7A5C4C" style={{ position: 'absolute', left: '14px' }} />
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  placeholder="Enter your username"
+                  value={authUsername}
+                  onChange={(e) => setAuthUsername(e.target.value)}
+                  style={{ paddingLeft: '40px' }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: '0.75rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <Lock size={16} color="#7A5C4C" style={{ position: 'absolute', left: '14px' }} />
+                <input
+                  type="password"
+                  required
+                  autoComplete="off"
+                  placeholder="Enter your password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  style={{ paddingLeft: '40px' }}
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="btn-primary" style={{ marginTop: '10px', width: '100%', height: '46px', fontSize: '0.95rem' }}>
+              Log In <ArrowRight size={16} />
+            </button>
+          </form>
+
+          <div style={{ marginTop: '22px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#7A5C4C', fontSize: '0.75rem', fontWeight: '600' }}>
+            <ShieldCheck size={14} color="#10b981" /> Protected & Encrypted Cloud Sync
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN APP RENDER (AUTHENTICATED) ---
   return (
     <div style={{ minHeight: '100vh', paddingBottom: '48px', background: currentView === 'menstrual' ? '#0d0714' : 'transparent', transition: 'background 0.3s ease' }}>
       {/* HEADER / NAVIGATION */}
@@ -394,53 +539,77 @@ export default function App() {
             </div>
             <div>
               <h1 style={{ fontWeight: '800', fontSize: '1.2rem', color: currentView === 'menstrual' ? '#ffffff' : '#3A1F16', letterSpacing: '-0.02em' }}>
-               Tamil & Pooja Suite
+                Tamil Pooja Suite
               </h1>
               <span style={{ fontSize: '0.75rem', color: currentView === 'menstrual' ? '#FF2A6D' : '#7A5C4C', fontWeight: '600' }}>
-                {currentView === 'menstrual' ? '' : 'Expense & Budget Manager'}
+                {currentView === 'menstrual' ? 'Dark Rose Cycle Tracker' : 'Expense & Budget Manager'}
               </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', background: currentView === 'menstrual' ? 'rgba(28, 15, 42, 0.8)' : 'rgba(255, 255, 255, 0.7)', padding: '4px', borderRadius: '99px', border: currentView === 'menstrual' ? '1px solid rgba(255, 59, 110, 0.3)' : '1px solid #F0DCC0' }}>
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-              { id: 'transactions', label: 'Transactions', icon: Receipt },
-              { id: 'budgets', label: 'Budgets', icon: PieChartIcon },
-              { id: 'menstrual', label: 'Menstrual Tracker', icon: HeartPulse }
-            ].map((tab) => {
-              const Icon = tab.icon;
-              const isActive = currentView === tab.id;
-              const isMenstrualTab = tab.id === 'menstrual';
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setCurrentView(tab.id)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px 18px',
-                    borderRadius: '99px',
-                    border: 'none',
-                    background: isActive
-                      ? isMenstrualTab
-                        ? 'linear-gradient(135deg, #FF2A6D, #9A1750)'
-                        : 'linear-gradient(135deg, #FF7A29, #FF3B6E)'
-                      : 'transparent',
-                    color: isActive ? '#ffffff' : currentView === 'menstrual' ? '#94a3b8' : '#7A5C4C',
-                    fontWeight: isActive ? '700' : '600',
-                    fontSize: '0.88rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    boxShadow: isActive ? '0 4px 14px rgba(255,42,109,0.35)' : 'none'
-                  }}
-                >
-                  <Icon size={16} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Nav Pills */}
+            <div style={{ display: 'flex', background: currentView === 'menstrual' ? 'rgba(28, 15, 42, 0.8)' : 'rgba(255, 255, 255, 0.7)', padding: '4px', borderRadius: '99px', border: currentView === 'menstrual' ? '1px solid rgba(255, 59, 110, 0.3)' : '1px solid #F0DCC0' }}>
+              {[
+                { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+                { id: 'transactions', label: 'Transactions', icon: Receipt },
+                { id: 'budgets', label: 'Budgets', icon: PieChartIcon },
+                { id: 'menstrual', label: 'Menstrual Tracker', icon: HeartPulse }
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = currentView === tab.id;
+                const isMenstrualTab = tab.id === 'menstrual';
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setCurrentView(tab.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 16px',
+                      borderRadius: '99px',
+                      border: 'none',
+                      background: isActive
+                        ? isMenstrualTab
+                          ? 'linear-gradient(135deg, #FF2A6D, #9A1750)'
+                          : 'linear-gradient(135deg, #FF7A29, #FF3B6E)'
+                        : 'transparent',
+                      color: isActive ? '#ffffff' : currentView === 'menstrual' ? '#94a3b8' : '#7A5C4C',
+                      fontWeight: isActive ? '700' : '600',
+                      fontSize: '0.85rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: isActive ? '0 4px 14px rgba(255,42,109,0.35)' : 'none'
+                    }}
+                  >
+                    <Icon size={15} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active User Badge & Logout Button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className="user-badge" style={{ fontSize: '0.78rem' }}>
+                <User size={13} /> {currentUser}
+              </span>
+              <button
+                onClick={handleLogout}
+                title="Log Out"
+                className="btn-secondary"
+                style={{
+                  height: '36px',
+                  width: '36px',
+                  padding: 0,
+                  borderRadius: '10px',
+                  color: '#ef4444'
+                }}
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </nav>
@@ -605,7 +774,7 @@ export default function App() {
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                       <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16' }}>Recent Transactions</h3>
-                      <button className="btn-primary" style={{ height: '34px', padding: '0 12px', fontSize: '0.8rem' }} onClick={() => setIsAddExpenseOpen(true)}>
+                      <button className="btn-primary" style={{ height: '36px', padding: '0 14px', fontSize: '0.82rem' }} onClick={() => setIsAddExpenseOpen(true)}>
                         <Plus size={14} /> Add Expense
                       </button>
                     </div>
@@ -626,7 +795,7 @@ export default function App() {
                                 <div>
                                   <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#3A1F16' }}>{e.description}</div>
                                   <div style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '2px' }}>
-                                    {cat ? cat.name : 'Other'} • {e.expense_date} • <span className="user-badge" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>{e.added_by || 'Pooja'}</span>
+                                    {cat ? cat.name : 'Other'} • {e.expense_date} • <span className="user-badge" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>{e.added_by || currentUser}</span>
                                   </div>
                                 </div>
                               </div>
@@ -663,7 +832,7 @@ export default function App() {
                       <Search size={16} color="#7A5C4C" style={{ position: 'absolute', left: '12px' }} />
                       <input
                         type="text"
-                        placeholder="Filter e.g. flower, tamil..."
+                        placeholder="Filter e.g. flower, Tamil..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         style={{ paddingLeft: '36px', paddingRight: '32px' }}
@@ -741,7 +910,7 @@ export default function App() {
                                 </td>
                                 <td>
                                   <span className="user-badge">
-                                    <User size={12} /> {exp.added_by || 'Pooja'}
+                                    <User size={12} /> {exp.added_by || currentUser}
                                   </span>
                                 </td>
                                 <td style={{ color: '#7A5C4C' }}>{exp.expense_date}</td>
@@ -859,7 +1028,7 @@ export default function App() {
                           <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden', marginBottom: '6px' }}>
                             <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: isOver ? '#FF3B6E' : 'linear-gradient(90deg, #FF7A29, #FFC93C)', borderRadius: '99px', transition: 'width 0.3s ease' }} />
                           </div>
-                          <div style={{ fontSize: '0.75rem', textAlign: 'right', color: isOver ? '#FF3B6E' : '#7A5C4C', fontWeight: isOver ? '700' : '500' }}>
+                          <div style={{ fontSize: '0.75rem', textAlign: 'right', color: isOver ? '#FF3B6E' : '#7A5C4C', fontWeight: '500' }}>
                             {budgetAmount > 0 ? `${pct}% limit used` : 'No Limit Set'}
                           </div>
                         </div>
@@ -870,10 +1039,9 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 4: MENSTRUAL TRACKER (DARK MODE THEME) */}
+            {/* VIEW 4: MENSTRUAL TRACKER */}
             {currentView === 'menstrual' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-                {/* TOP SUMMARY CARDS */}
                 <div className="grid-3">
                   <div className="dark-glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -915,7 +1083,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* CYCLE LOGGER FORM */}
                 <div className="dark-glass-card" style={{ border: '1px solid rgba(255, 42, 109, 0.4)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
                     <div style={{ background: 'linear-gradient(135deg, #FF2A6D, #9A1750)', padding: '8px', borderRadius: '10px', color: 'white' }}>
@@ -958,7 +1125,6 @@ export default function App() {
                   </form>
                 </div>
 
-                {/* MONTHLY GRID DISPLAY */}
                 <div>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Calendar size={18} color="#FF2A6D" /> Period History Grid
@@ -1056,7 +1222,7 @@ export default function App() {
 
               <div>
                 <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ADDED BY (PERSON NAME)</label>
-                <input type="text" placeholder="e.g. Pooja / Tamil" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} />
+                <input type="text" placeholder="e.g. Tamil / Pooja" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} />
               </div>
 
               <div>
