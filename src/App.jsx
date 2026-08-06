@@ -26,14 +26,19 @@ import {
   AlertCircle,
   User,
   Search,
-  Download,
+  FileText,
   Sparkles,
   Flame,
   Clock,
   LogOut,
   Lock,
   ArrowRight,
-  ShieldCheck
+  ShieldCheck,
+  Landmark,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  Coins
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -49,12 +54,12 @@ import {
 
 // --- ALLOWED USER LOGINS (Tamil, Pooja, Admin) ---
 const ALLOWED_USERS = [
-  { username: 'tamil', password: 'tamil', name: 'Tamil' },
-  { username: 'pooja', password: 'pooja', name: 'Pooja' },
-  { username: 'admin', password: 'kavin', name: 'Kavin' }
+  { username: 'tamil', password: 'tamil123', name: 'Tamil' },
+  { username: 'pooja', password: 'pooja123', name: 'Pooja' },
+  { username: 'admin', password: 'admin', name: 'Admin' }
 ];
 
-// --- SEEDED CATEGORIES ---
+// --- SEEDED CATEGORIES (Updated Travel -> Grocery) ---
 const DEFAULT_CATEGORIES = [
   { id: 'cat-1', name: 'Food & Dining', color: '#FF7A29', icon: 'Utensils' },
   { id: 'cat-2', name: 'Transport', color: '#3b82f6', icon: 'Car' },
@@ -115,8 +120,20 @@ const calculateDaysDiff = (start, end) => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 };
 
+// Helper for Green-to-Red Dynamic Progress Bar Gradient
+const getProgressBarGradient = (percentage) => {
+  if (percentage >= 100) {
+    return 'linear-gradient(90deg, #FF3B6E, #C4114A)'; // Full/Over limit -> Red
+  } else if (percentage >= 65) {
+    return 'linear-gradient(90deg, #FFC93C, #FF7A29, #FF3B6E)'; // High -> Yellow to Orange to Red
+  } else if (percentage >= 35) {
+    return 'linear-gradient(90deg, #10b981, #FFC93C, #FF7A29)'; // Medium -> Green to Gold to Orange
+  }
+  return 'linear-gradient(90deg, #10b981, #34d399)'; // Low/Initial -> Emerald Green
+};
+
 export default function App() {
-  // --- AUTHENTICATION STATE (INITIALIZED EMPTY) ---
+  // --- AUTHENTICATION STATE ---
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return localStorage.getItem('pooja_suite_auth') === 'true';
   });
@@ -128,11 +145,13 @@ export default function App() {
   const [authError, setAuthError] = useState('');
 
   // --- VIEW STATE ---
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard | transactions | budgets | loans | menstrual
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [cycles, setCycles] = useState([]);
+  const [schemes, setSchemes] = useState([]);
+  const [installments, setInstallments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // --- FETCH DATA WHEN AUTHENTICATED ---
@@ -155,6 +174,12 @@ export default function App() {
 
     const { data: cycData } = await supabase.from('menstrual_cycles').select('*').order('start_date', { ascending: false });
     if (cycData) setCycles(cycData);
+
+    const { data: schData } = await supabase.from('loans_and_chits').select('*').order('created_at', { ascending: false });
+    if (schData) setSchemes(schData);
+
+    const { data: instData } = await supabase.from('scheme_installments').select('*').order('month_number', { ascending: true });
+    if (instData) setInstallments(instData);
 
     setIsLoading(false);
   };
@@ -189,6 +214,8 @@ export default function App() {
     setExpenses([]);
     setBudgets([]);
     setCycles([]);
+    setSchemes([]);
+    setInstallments([]);
   };
 
   // --- FILTER & SEARCH STATES ---
@@ -198,7 +225,10 @@ export default function App() {
 
   // --- MODAL & FORM STATES ---
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [isAddSchemeOpen, setIsAddSchemeOpen] = useState(false);
+  const [editingSchemeId, setEditingSchemeId] = useState(null);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [selectedSchemeId, setSelectedSchemeId] = useState(null);
 
   const [expenseForm, setExpenseForm] = useState({
     amount: '',
@@ -208,6 +238,15 @@ export default function App() {
     expense_date: new Date().toISOString().split('T')[0]
   });
 
+  const [schemeForm, setSchemeForm] = useState({
+    title: '',
+    type: 'Chit Fund',
+    total_months: '20',
+    monthly_amount: '10000',
+    start_date: new Date().toISOString().split('T')[0],
+    general_notes: ''
+  });
+
   const [cycleForm, setCycleForm] = useState({
     start_date: new Date().toISOString().split('T')[0],
     end_date: new Date().toISOString().split('T')[0]
@@ -215,6 +254,9 @@ export default function App() {
 
   const [editingBudgetId, setEditingBudgetId] = useState(null);
   const [tempBudgetAmount, setTempBudgetAmount] = useState('');
+
+  const [editingInstId, setEditingInstId] = useState(null);
+  const [instForm, setInstForm] = useState({ amount_paid: '', notes: '' });
 
   // --- COMPUTED EXPENSE METRICS ---
   const currentMonthKey = getCurrentMonthKey();
@@ -295,36 +337,75 @@ export default function App() {
     return Math.round(totalDays / cycles.length);
   }, [cycles]);
 
-  // --- ACTIONS ---
-  const handleExportCSV = () => {
+  // --- EXPORT TO FORMATTED PDF HANDLER ---
+  const handleExportPDF = () => {
     if (filteredExpenses.length === 0) {
-      alert('No transactions found to export.');
+      alert('No transactions available to print/export.');
       return;
     }
 
-    const headers = ['Description', 'Category', 'Added By', 'Date', 'Amount (INR)'];
-    const rows = filteredExpenses.map((exp) => {
+    const printWindow = window.open('', '_blank');
+    const tableRows = filteredExpenses.map((exp, index) => {
       const cat = categories.find((c) => c.id === exp.category_id);
-      return [
-        `"${(exp.description || '').replace(/"/g, '""')}"`,
-        `"${cat ? cat.name : 'Other'}"`,
-        `"${(exp.added_by || currentUser).replace(/"/g, '""')}"`,
-        `"${exp.expense_date}"`,
-        exp.amount
-      ];
-    });
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td><strong>${exp.description}</strong></td>
+          <td>${cat ? cat.name : 'Other'}</td>
+          <td>${exp.added_by || currentUser}</td>
+          <td>${exp.expense_date}</td>
+          <td style="color: #ef4444; font-weight: bold;">-${formatCurrency(exp.amount)}</td>
+        </tr>
+      `;
+    }).join('');
 
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `expenses_${selectedMonth}_${searchQuery.trim() || 'all'}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Tamil Pooja Suite - Expenses Report</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; color: #3A1F16; }
+            h1 { font-size: 20px; color: #FF7A29; margin-bottom: 4px; }
+            p { font-size: 13px; color: #7A5C4C; margin-top: 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #FFEFD6; color: #B8860B; text-align: left; padding: 10px; font-size: 12px; text-transform: uppercase; }
+            td { padding: 10px; border-bottom: 1px solid #F0DCC0; font-size: 13px; }
+            .total-banner { background: #FFF8ED; border: 1px solid #F0DCC0; padding: 14px; border-radius: 8px; margin-top: 20px; text-align: right; font-size: 16px; font-weight: bold; color: #E8600F; }
+          </style>
+        </head>
+        <body>
+          <h1>Tamil Pooja Suite - Expense Report</h1>
+          <p>Generated on ${new Date().toLocaleDateString('en-IN')} | Filter Month: ${formatMonthLabel(selectedMonth)} | Total Count: ${filteredExpenses.length}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Description</th>
+                <th>Category</th>
+                <th>Added By</th>
+                <th>Date</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <div class="total-banner">
+            Total Filtered Amount: ${formatCurrency(searchTotalAmount)}
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
   };
 
+  // --- EXPENSE HANDLERS ---
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0) return;
@@ -386,6 +467,151 @@ export default function App() {
     }
   };
 
+  // --- LOANS & CHIT FUNDS HANDLERS ---
+  const handleAddScheme = async (e) => {
+    e.preventDefault();
+    const months = parseInt(schemeForm.total_months) || 12;
+    const monthlyAmt = parseFloat(schemeForm.monthly_amount) || 0;
+    const targetAmt = months * monthlyAmt;
+
+    const newScheme = {
+      id: 'sch-' + Date.now(),
+      title: schemeForm.title || 'New Scheme',
+      type: schemeForm.type,
+      total_months: months,
+      monthly_amount: monthlyAmt,
+      total_target_amount: targetAmt,
+      start_date: schemeForm.start_date,
+      added_by: currentUser,
+      general_notes: schemeForm.general_notes,
+      created_at: new Date().toISOString()
+    };
+
+    const { error: schErr } = await supabase.from('loans_and_chits').insert([newScheme]);
+
+    if (!schErr) {
+      const newInstallments = [];
+      const startDateObj = new Date(schemeForm.start_date);
+
+      for (let i = 1; i <= months; i++) {
+        const dueDate = new Date(startDateObj.getFullYear(), startDateObj.getMonth() + (i - 1), 10);
+        newInstallments.push({
+          id: `inst-${newScheme.id}-${i}`,
+          scheme_id: newScheme.id,
+          month_number: i,
+          due_date: dueDate.toISOString().split('T')[0],
+          amount_paid: 0,
+          status: 'Pending',
+          payment_date: null,
+          notes: ''
+        });
+      }
+
+      await supabase.from('scheme_installments').insert(newInstallments);
+
+      setSchemes((prev) => [newScheme, ...prev]);
+      setInstallments((prev) => [...newInstallments, ...prev]);
+      setSelectedSchemeId(newScheme.id);
+      setIsAddSchemeOpen(false);
+      setSchemeForm({
+        title: '',
+        type: 'Chit Fund',
+        total_months: '20',
+        monthly_amount: '10000',
+        start_date: new Date().toISOString().split('T')[0],
+        general_notes: ''
+      });
+    } else {
+      alert('Error creating scheme: ' + schErr.message);
+    }
+  };
+
+  const handleOpenEditScheme = (sch) => {
+    setEditingSchemeId(sch.id);
+    setSchemeForm({
+      title: sch.title,
+      type: sch.type,
+      total_months: String(sch.total_months),
+      monthly_amount: String(sch.monthly_amount),
+      start_date: sch.start_date,
+      general_notes: sch.general_notes || ''
+    });
+  };
+
+  const handleSaveEditedScheme = async (e) => {
+    e.preventDefault();
+    if (!editingSchemeId) return;
+
+    const months = parseInt(schemeForm.total_months) || 12;
+    const monthlyAmt = parseFloat(schemeForm.monthly_amount) || 0;
+    const targetAmt = months * monthlyAmt;
+
+    const updatedPayload = {
+      title: schemeForm.title,
+      type: schemeForm.type,
+      total_months: months,
+      monthly_amount: monthlyAmt,
+      total_target_amount: targetAmt,
+      start_date: schemeForm.start_date,
+      general_notes: schemeForm.general_notes
+    };
+
+    const { error } = await supabase
+      .from('loans_and_chits')
+      .update(updatedPayload)
+      .eq('id', editingSchemeId);
+
+    if (!error) {
+      setSchemes((prev) =>
+        prev.map((s) => (s.id === editingSchemeId ? { ...s, ...updatedPayload } : s))
+      );
+      setEditingSchemeId(null);
+      setSchemeForm({
+        title: '',
+        type: 'Chit Fund',
+        total_months: '20',
+        monthly_amount: '10000',
+        start_date: new Date().toISOString().split('T')[0],
+        general_notes: ''
+      });
+    } else {
+      alert('Error updating scheme: ' + error.message);
+    }
+  };
+
+  const handleUpdateInstallment = async (instId, amountPaid, notes, status) => {
+    const updatedPayload = {
+      amount_paid: Number(amountPaid) || 0,
+      notes: notes || '',
+      status: status || (Number(amountPaid) > 0 ? 'Paid' : 'Pending'),
+      payment_date: Number(amountPaid) > 0 ? new Date().toISOString().split('T')[0] : null
+    };
+
+    const { error } = await supabase.from('scheme_installments').update(updatedPayload).eq('id', instId);
+
+    if (!error) {
+      setInstallments((prev) =>
+        prev.map((item) => (item.id === instId ? { ...item, ...updatedPayload } : item))
+      );
+      setEditingInstId(null);
+    } else {
+      alert('Error updating installment: ' + error.message);
+    }
+  };
+
+  const handleDeleteScheme = async (schemeId) => {
+    if (!window.confirm('Are you sure you want to delete this Chit/Loan scheme and all its installment records?')) return;
+
+    const { error } = await supabase.from('loans_and_chits').delete().eq('id', schemeId);
+    if (!error) {
+      setSchemes((prev) => prev.filter((s) => s.id !== schemeId));
+      setInstallments((prev) => prev.filter((i) => i.scheme_id !== schemeId));
+      if (selectedSchemeId === schemeId) setSelectedSchemeId(null);
+    } else {
+      alert('Error deleting scheme: ' + error.message);
+    }
+  };
+
   const handleAddCycle = async (e) => {
     e.preventDefault();
     if (!cycleForm.start_date || !cycleForm.end_date) return;
@@ -430,7 +656,7 @@ export default function App() {
       .slice(0, 5);
   }, [expenses]);
 
-  // --- GLOSSY COLOR LOGIN PAGE (NO DISPLAY NAMES, NO AUTOFILL) ---
+  // --- GLOSSY LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
       <div
@@ -441,15 +667,12 @@ export default function App() {
           justifyContent: 'center',
           padding: '20px',
           position: 'relative',
-          overflow: 'hidden',
-          background: 'radial-gradient(circle at 10% 20%, rgba(255, 122, 41, 0.45) 0%, transparent 45%), radial-gradient(circle at 90% 80%, rgba(255, 59, 110, 0.4) 0%, transparent 50%), radial-gradient(circle at 50% 50%, rgba(255, 201, 60, 0.35) 0%, transparent 60%), linear-gradient(145deg, #1f0b18, #3a1128, #180920)'
+          overflow: 'hidden'
         }}
       >
-        {/* Ambient Glossy Orbs */}
         <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: '380px', height: '380px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 122, 41, 0.5) 0%, rgba(255, 59, 110, 0.1) 70%)', filter: 'blur(60px)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', bottom: '-10%', right: '-5%', width: '420px', height: '420px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 59, 110, 0.5) 0%, rgba(255, 201, 60, 0.1) 70%)', filter: 'blur(70px)', pointerEvents: 'none' }} />
 
-        {/* Glossy Frosted Login Card */}
         <div
           className="glass-card"
           style={{
@@ -461,11 +684,10 @@ export default function App() {
             WebkitBackdropFilter: 'blur(28px)',
             border: '1.5px solid rgba(255, 255, 255, 0.95)',
             borderRadius: '24px',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.25), 0 10px 20px rgba(255, 59, 110, 0.15)',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.18), 0 10px 20px rgba(255, 59, 110, 0.12)',
             zIndex: 10
           }}
         >
-          {/* Header Badge */}
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
             <div style={{ display: 'inline-flex', background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '18px', padding: '16px', marginBottom: '14px', boxShadow: '0 6px 20px rgba(255, 122, 41, 0.35)' }}>
               <Wallet size={32} />
@@ -480,7 +702,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Login Form */}
           <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div>
               <label style={{ fontSize: '0.75rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>USERNAME</label>
@@ -542,18 +763,19 @@ export default function App() {
                 Tamil Pooja Suite
               </h1>
               <span style={{ fontSize: '0.75rem', color: currentView === 'menstrual' ? '#FF2A6D' : '#7A5C4C', fontWeight: '600' }}>
-                {currentView === 'menstrual' ? 'Dark Rose Cycle Tracker' : 'Expense & Budget Manager'}
+                {currentView === 'menstrual' ? 'Dark Rose Cycle Tracker' : 'Finance, Chits & Budget Suite'}
               </span>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Nav Pills */}
+            {/* 5 Navigation Pills */}
             <div style={{ display: 'flex', background: currentView === 'menstrual' ? 'rgba(28, 15, 42, 0.8)' : 'rgba(255, 255, 255, 0.7)', padding: '4px', borderRadius: '99px', border: currentView === 'menstrual' ? '1px solid rgba(255, 59, 110, 0.3)' : '1px solid #F0DCC0' }}>
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'transactions', label: 'Transactions', icon: Receipt },
                 { id: 'budgets', label: 'Budgets', icon: PieChartIcon },
+                { id: 'loans', label: 'Loans & Chits', icon: Landmark },
                 { id: 'menstrual', label: 'Menstrual Tracker', icon: HeartPulse }
               ].map((tab) => {
                 const Icon = tab.icon;
@@ -592,7 +814,7 @@ export default function App() {
 
             {/* Active User Badge & Logout Button */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="user-badge" style={{ fontSize: '0.78rem' }}>
+              <span className="user-badge">
                 <User size={13} /> {currentUser}
               </span>
               <button
@@ -615,11 +837,11 @@ export default function App() {
       </nav>
 
       {/* MAIN CONTAINER */}
-      <main style={{ maxWidth: '1120px', margin: '32px auto 0', padding: '0 16px' }}>
+      <main style={{ maxWidth: '1120px', margin: '28px auto 0', padding: '0 16px' }}>
         {isLoading ? (
-          <div style={{ padding: '80px 0', textAlign: 'center', color: '#FF2A6D' }}>
-            <div style={{ display: 'inline-block', padding: '16px', borderRadius: '50%', background: 'rgba(255,42,109,0.12)', marginBottom: '12px' }}>
-              <HeartPulse size={32} />
+          <div style={{ padding: '80px 0', textAlign: 'center', color: '#FF7A29' }}>
+            <div style={{ display: 'inline-block', padding: '16px', borderRadius: '50%', background: 'rgba(255,122,41,0.12)', marginBottom: '12px' }}>
+              <Wallet size={32} />
             </div>
             <p style={{ fontWeight: '700', fontSize: '1.05rem', color: currentView === 'menstrual' ? '#ffffff' : '#3A1F16' }}>Loading data...</p>
           </div>
@@ -627,7 +849,41 @@ export default function App() {
           <>
             {/* VIEW 1: DASHBOARD */}
             {currentView === 'dashboard' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                
+                {/* PROMINENT HERO BAR - CLEAN GREETING & GLOSSY BUTTON */}
+                <div
+                  className="glass-card"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justify: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '16px',
+                    padding: '18px 24px',
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 239, 214, 0.75))',
+                    border: '1.5px solid rgba(255, 122, 41, 0.3)',
+                    boxShadow: '0 8px 30px rgba(255, 122, 41, 0.12)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', padding: '12px', borderRadius: '16px', display: 'flex', boxShadow: '0 4px 14px rgba(255,122,41,0.3)' }}>
+                      <Sparkles size={24} />
+                    </div>
+                    <div>
+                      <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#3A1F16', letterSpacing: '-0.01em' }}>
+                        Welcome back, {currentUser}!
+                      </h2>
+                    </div>
+                  </div>
+
+                  {/* HIGH-IMPACT GLOSSY BUTTON */}
+                  <button className="btn-glossy-hero" onClick={() => setIsAddExpenseOpen(true)}>
+                    <Plus size={18} /> Add New Expense
+                  </button>
+                </div>
+
+                {/* 4 KPI CARDS */}
                 <div className="grid-4">
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -762,8 +1018,9 @@ export default function App() {
                                 {formatCurrency(spent)} <span style={{ color: '#7A5C4C', opacity: 0.8 }}>/ {budgetAmt > 0 ? formatCurrency(budgetAmt) : 'No Limit'}</span>
                               </span>
                             </div>
+                            {/* GREEN-TO-RED DYNAMIC PROGRESS BAR */}
                             <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${pct}%`, background: isOver ? '#FF3B6E' : 'linear-gradient(90deg, #FF7A29, #FFC93C)', borderRadius: '99px', transition: 'width 0.3s ease' }} />
+                              <div style={{ height: '100%', width: `${pct}%`, background: getProgressBarGradient(pct), borderRadius: '99px', transition: 'width 0.3s ease' }} />
                             </div>
                           </div>
                         );
@@ -774,9 +1031,6 @@ export default function App() {
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                       <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#3A1F16' }}>Recent Transactions</h3>
-                      <button className="btn-primary" style={{ height: '36px', padding: '0 14px', fontSize: '0.82rem' }} onClick={() => setIsAddExpenseOpen(true)}>
-                        <Plus size={14} /> Add Expense
-                      </button>
                     </div>
 
                     {recentExpenses.length === 0 ? (
@@ -816,8 +1070,8 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#3A1F16' }}>Transactions</h2>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <button className="btn-secondary" onClick={handleExportCSV}>
-                      <Download size={16} /> Export CSV
+                    <button className="btn-pdf" onClick={handleExportPDF}>
+                      <FileText size={16} /> Export PDF
                     </button>
                     <button className="btn-primary" onClick={() => setIsAddExpenseOpen(true)}>
                       <Plus size={16} /> Add Expense
@@ -1025,8 +1279,9 @@ export default function App() {
                         </div>
 
                         <div>
+                          {/* GREEN-TO-RED DYNAMIC PROGRESS BAR */}
                           <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden', marginBottom: '6px' }}>
-                            <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: isOver ? '#FF3B6E' : 'linear-gradient(90deg, #FF7A29, #FFC93C)', borderRadius: '99px', transition: 'width 0.3s ease' }} />
+                            <div style={{ height: '100%', width: `${Math.min(pct, 100)}%`, background: getProgressBarGradient(pct), borderRadius: '99px', transition: 'width 0.3s ease' }} />
                           </div>
                           <div style={{ fontSize: '0.75rem', textAlign: 'right', color: isOver ? '#FF3B6E' : '#7A5C4C', fontWeight: '500' }}>
                             {budgetAmount > 0 ? `${pct}% limit used` : 'No Limit Set'}
@@ -1039,7 +1294,307 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 4: MENSTRUAL TRACKER */}
+            {/* VIEW 4: LOANS & CHIT FUNDS */}
+            {currentView === 'loans' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#3A1F16' }}>Loans & Chit Funds</h2>
+                    <p style={{ fontSize: '0.8rem', color: '#7A5C4C', marginTop: '2px' }}>Track monthly chit fund variable payments, dividends & loan repayments</p>
+                  </div>
+                  <button className="btn-primary" onClick={() => setIsAddSchemeOpen(true)}>
+                    <Plus size={16} /> Add Chit / Loan
+                  </button>
+                </div>
+
+                <div className="grid-4">
+                  <div className="glass-card">
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>ACTIVE SCHEMES</span>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#3A1F16', marginTop: '10px' }}>
+                      {schemes.length} Active
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Chits & Loans enrolled</span>
+                  </div>
+
+                  <div className="glass-card">
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL TARGET VALUE</span>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#FF7A29', marginTop: '10px' }}>
+                      {formatCurrency(schemes.reduce((acc, s) => acc + Number(s.total_target_amount), 0))}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Nominal scheme value</span>
+                  </div>
+
+                  <div className="glass-card">
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>ACTUAL CASH PAID</span>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#FF3B6E', marginTop: '10px' }}>
+                      {formatCurrency(installments.reduce((acc, i) => acc + Number(i.amount_paid || 0), 0))}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Total money contributed</span>
+                  </div>
+
+                  <div className="glass-card">
+                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#7A5C4C', letterSpacing: '0.05em' }}>TOTAL DIVIDEND SAVED</span>
+                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#10b981', marginTop: '10px' }}>
+                      {formatCurrency(
+                        installments.reduce((acc, i) => {
+                          const sch = schemes.find((s) => s.id === i.scheme_id);
+                          if (!sch || i.status !== 'Paid') return acc;
+                          const base = Number(sch.monthly_amount);
+                          const paid = Number(i.amount_paid);
+                          return acc + (base > paid ? base - paid : 0);
+                        }, 0)
+                      )}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#7A5C4C', marginTop: '4px', display: 'block' }}>Chit auction discounts</span>
+                  </div>
+                </div>
+
+                {schemes.length === 0 ? (
+                  <div className="glass-card" style={{ padding: '60px 20px', textAlign: 'center', color: '#7A5C4C' }}>
+                    <Landmark size={40} style={{ marginBottom: '12px', opacity: 0.4 }} />
+                    <p style={{ fontSize: '0.95rem' }}>No Chit Funds or Loans enrolled yet. Click <strong>+ Add Chit / Loan</strong> above to set up your first scheme.</p>
+                  </div>
+                ) : (
+                  <div className="grid-2">
+                    {schemes.map((sch) => {
+                      const schInsts = installments.filter((i) => i.scheme_id === sch.id);
+                      const paidInsts = schInsts.filter((i) => i.status === 'Paid');
+                      const totalCashPaid = schInsts.reduce((acc, i) => acc + Number(i.amount_paid || 0), 0);
+                      
+                      const totalDividendSaved = schInsts.reduce((acc, i) => {
+                        if (i.status !== 'Paid') return acc;
+                        const base = Number(sch.monthly_amount);
+                        const paid = Number(i.amount_paid);
+                        return acc + (base > paid ? base - paid : 0);
+                      }, 0);
+
+                      const progressPct = Math.round((paidInsts.length / sch.total_months) * 100) || 0;
+                      const isSelected = selectedSchemeId === sch.id;
+
+                      return (
+                        <div key={sch.id} className="glass-card" style={{ borderColor: isSelected ? '#FF7A29' : undefined, borderWidth: isSelected ? '2px' : '1px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                            <div>
+                              <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#FF7A29', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'rgba(255,122,41,0.12)', padding: '2px 8px', borderRadius: '6px' }}>
+                                {sch.type}
+                              </span>
+                              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#3A1F16', marginTop: '6px' }}>{sch.title}</h3>
+                            </div>
+
+                            {/* EDIT SCHEME & DELETE SCHEME BUTTONS */}
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              <button
+                                onClick={() => handleOpenEditScheme(sch)}
+                                title="Edit Scheme Details"
+                                style={{ background: '#FFF8ED', color: '#B8860B', border: '1px solid #F0DCC0', borderRadius: '8px', padding: '6px', cursor: 'pointer' }}
+                              >
+                                <Settings size={15} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteScheme(sch.id)}
+                                title="Delete Scheme"
+                                style={{ background: '#fef2f2', color: '#FF3B6E', border: 'none', borderRadius: '8px', padding: '6px', cursor: 'pointer' }}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px', fontSize: '0.85rem' }}>
+                            <div>
+                              <span style={{ color: '#7A5C4C', display: 'block', fontSize: '0.75rem' }}>Monthly Base</span>
+                              <strong style={{ color: '#3A1F16' }}>{formatCurrency(sch.monthly_amount)} / mo</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#7A5C4C', display: 'block', fontSize: '0.75rem' }}>Target Value</span>
+                              <strong style={{ color: '#3A1F16' }}>{formatCurrency(sch.total_target_amount)}</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#7A5C4C', display: 'block', fontSize: '0.75rem' }}>Progress</span>
+                              <strong style={{ color: '#3A1F16' }}>{paidInsts.length} of {sch.total_months} Months</strong>
+                            </div>
+                            <div>
+                              <span style={{ color: '#7A5C4C', display: 'block', fontSize: '0.75rem' }}>Actual Paid</span>
+                              <strong style={{ color: '#FF3B6E' }}>{formatCurrency(totalCashPaid)}</strong>
+                            </div>
+                          </div>
+
+                          {/* PER-SCHEME DIVIDEND SAVED OVERVIEW BANNER */}
+                          {sch.type === 'Chit Fund' && (
+                            <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.25)', padding: '8px 12px', borderRadius: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.78rem', color: '#10b981', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <Coins size={14} /> Dividend Saved So Far
+                              </span>
+                              <strong style={{ fontSize: '0.92rem', color: '#10b981', fontWeight: '800' }}>
+                                +{formatCurrency(totalDividendSaved)}
+                              </strong>
+                            </div>
+                          )}
+
+                          {/* GREEN-TO-RED DYNAMIC PROGRESS BAR */}
+                          <div style={{ height: '8px', width: '100%', background: '#F0DCC0', borderRadius: '99px', overflow: 'hidden', marginBottom: '16px' }}>
+                            <div style={{ height: '100%', width: `${progressPct}%`, background: getProgressBarGradient(progressPct), borderRadius: '99px', transition: 'width 0.3s ease' }} />
+                          </div>
+
+                          {sch.general_notes && (
+                            <p style={{ fontSize: '0.8rem', color: '#7A5C4C', fontStyle: 'italic', marginBottom: '16px', background: 'rgba(255,255,255,0.6)', padding: '8px 10px', borderRadius: '8px', border: '1px solid #F0DCC0' }}>
+                              "{sch.general_notes}"
+                            </p>
+                          )}
+
+                          <button
+                            className={isSelected ? "btn-primary" : "btn-secondary"}
+                            style={{ width: '100%', height: '38px', fontSize: '0.85rem' }}
+                            onClick={() => setSelectedSchemeId(isSelected ? null : sch.id)}
+                          >
+                            {isSelected ? 'Hide Installment Schedule' : 'View Monthly Schedule & Notes'} {isSelected ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedSchemeId && (() => {
+                  const sch = schemes.find((s) => s.id === selectedSchemeId);
+                  if (!sch) return null;
+                  const schInsts = installments.filter((i) => i.scheme_id === sch.id);
+
+                  return (
+                    <div className="glass-card" style={{ padding: 0, overflow: 'hidden', border: '2px solid #FF7A29' }}>
+                      <div style={{ padding: '18px 24px', background: 'rgba(255, 122, 41, 0.08)', borderBottom: '1px solid #F0DCC0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                        <div>
+                          <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#3A1F16' }}>{sch.title} - Monthly Schedule</h3>
+                          <p style={{ fontSize: '0.8rem', color: '#7A5C4C' }}>Base Installment: {formatCurrency(sch.monthly_amount)} / month | Type: {sch.type}</p>
+                        </div>
+                        <button className="btn-secondary" style={{ height: '32px', fontSize: '0.78rem' }} onClick={() => setSelectedSchemeId(null)}>
+                          Close Table <X size={14} />
+                        </button>
+                      </div>
+
+                      <div className="table-container">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>Month #</th>
+                              <th>Scheduled Due Date</th>
+                              <th>Base Amount</th>
+                              <th>Actual Paid (₹)</th>
+                              <th>Dividend Benefit</th>
+                              <th>Status</th>
+                              <th>Custom Month Notes</th>
+                              <th style={{ textAlign: 'right' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {schInsts.map((inst) => {
+                              const isEditing = editingInstId === inst.id;
+                              const baseAmt = Number(sch.monthly_amount);
+                              const paidAmt = Number(inst.amount_paid);
+                              const dividendBenefit = inst.status === 'Paid' && baseAmt > paidAmt ? baseAmt - paidAmt : 0;
+
+                              return (
+                                <tr key={inst.id}>
+                                  <td style={{ fontWeight: '800', color: '#FF7A29' }}>Month {inst.month_number}</td>
+                                  <td style={{ color: '#7A5C4C' }}>{inst.due_date}</td>
+                                  <td style={{ fontWeight: '700', color: '#3A1F16' }}>{formatCurrency(baseAmt)}</td>
+                                  
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="number"
+                                        style={{ width: '110px', height: '34px' }}
+                                        value={instForm.amount_paid}
+                                        onChange={(e) => setInstForm({ ...instForm, amount_paid: e.target.value })}
+                                      />
+                                    ) : (
+                                      <span style={{ fontWeight: '800', color: inst.status === 'Paid' ? '#FF3B6E' : '#94a3b8' }}>
+                                        {inst.status === 'Paid' ? formatCurrency(paidAmt) : '₹0'}
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td>
+                                    {dividendBenefit > 0 ? (
+                                      <span style={{ background: '#ecfdf5', color: '#10b981', padding: '2px 8px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: '800' }}>
+                                        +{formatCurrency(dividendBenefit)} Saved
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>-</span>
+                                    )}
+                                  </td>
+
+                                  <td>
+                                    <span
+                                      style={{
+                                        background: inst.status === 'Paid' ? '#ecfdf5' : '#fef3c7',
+                                        color: inst.status === 'Paid' ? '#10b981' : '#b45309',
+                                        padding: '4px 10px',
+                                        borderRadius: '99px',
+                                        fontSize: '0.78rem',
+                                        fontWeight: '800'
+                                      }}
+                                    >
+                                      {inst.status}
+                                    </span>
+                                  </td>
+
+                                  <td>
+                                    {isEditing ? (
+                                      <input
+                                        type="text"
+                                        placeholder="e.g. Paid via GPay / Auction taken"
+                                        style={{ minWidth: '180px', height: '34px' }}
+                                        value={instForm.notes}
+                                        onChange={(e) => setInstForm({ ...instForm, notes: e.target.value })}
+                                      />
+                                    ) : (
+                                      <span style={{ fontSize: '0.82rem', color: '#7A5C4C' }}>{inst.notes || '—'}</span>
+                                    )}
+                                  </td>
+
+                                  <td style={{ textAlign: 'right' }}>
+                                    {isEditing ? (
+                                      <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end' }}>
+                                        <button
+                                          style={{ background: '#10b981', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}
+                                          onClick={() => handleUpdateInstallment(inst.id, instForm.amount_paid, instForm.notes, 'Paid')}
+                                        >
+                                          <Check size={14} />
+                                        </button>
+                                        <button
+                                          style={{ background: '#FF3B6E', color: 'white', border: 'none', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}
+                                          onClick={() => setEditingInstId(null)}
+                                        >
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        className="btn-secondary"
+                                        style={{ height: '30px', padding: '0 10px', fontSize: '0.75rem' }}
+                                        onClick={() => {
+                                          setEditingInstId(inst.id);
+                                          setInstForm({ amount_paid: String(inst.amount_paid || sch.monthly_amount), notes: inst.notes || '' });
+                                        }}
+                                      >
+                                        <Edit2 size={12} /> Log Payment
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* VIEW 5: MENSTRUAL TRACKER */}
             {currentView === 'menstrual' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 <div className="grid-3">
@@ -1232,6 +1787,122 @@ export default function App() {
 
               <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
                 Save Expense
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ADD SCHEME */}
+      {isAddSchemeOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(58, 31, 22, 0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '460px', background: '#ffffff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#3A1F16' }}>Add New Chit / Loan</h3>
+              <button onClick={() => setIsAddSchemeOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4C' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddScheme} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SCHEME TITLE</label>
+                <input type="text" required placeholder="e.g. Sri Lakshmi 20-Month Chit" value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>TYPE</label>
+                  <select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}>
+                    <option value="Chit Fund">Chit Fund</option>
+                    <option value="Loan Taken">Loan Taken</option>
+                    <option value="Loan Given">Loan Given</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DURATION (MONTHS)</label>
+                  <input type="number" required placeholder="e.g. 20" value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTHLY BASE (₹)</label>
+                  <input type="number" required placeholder="e.g. 10000" value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
+                  <input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ORGANIZER & GENERAL NOTES</label>
+                <textarea rows="3" placeholder="Write organizer details, auction payout rules, or contact info..." value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} />
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
+                Save Scheme & Generate Schedule
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT SCHEME */}
+      {editingSchemeId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(58, 31, 22, 0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}>
+          <div className="glass-card" style={{ width: '100%', maxWidth: '460px', background: '#ffffff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#3A1F16' }}>Edit Chit / Loan Scheme</h3>
+              <button onClick={() => setEditingSchemeId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#7A5C4C' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedScheme} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SCHEME TITLE</label>
+                <input type="text" required value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>TYPE</label>
+                  <select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}>
+                    <option value="Chit Fund">Chit Fund</option>
+                    <option value="Loan Taken">Loan Taken</option>
+                    <option value="Loan Given">Loan Given</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DURATION (MONTHS)</label>
+                  <input type="number" required value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTHLY BASE (₹)</label>
+                  <input type="number" required value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
+                  <input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.78rem', color: '#7A5C4C', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ORGANIZER & GENERAL NOTES</label>
+                <textarea rows="3" value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} />
+              </div>
+
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
+                Save Scheme Changes
               </button>
             </form>
           </div>

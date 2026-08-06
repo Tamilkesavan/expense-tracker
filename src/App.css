@@ -1,38 +1,27 @@
 /* ==========================================================================
-   TAMIL POOJA EXPENSE TRACKER & MENSTRUAL TRACKER — GLOSSY MARIGOLD UI
-   Sections: Tokens / Base / Surfaces / Layout / Inputs / Buttons /
-             Table / Badges & Pills
+   TAMIL POOJA EXPENSE TRACKER & SUITE - SOFT PASTEL GLASS UI
    ========================================================================== */
 
-/* ---------- 1. TOKENS ---------- */
 :root {
   --marigold: #FF7A29;
   --marigold-dark: #E8600F;
-  --marigold-light: #FFA35C;
   --kumkum: #FF3B6E;
   --turmeric: #FFC93C;
   --brass: #B8860B;
-  --cream: #FFF8ED;
-  --cream-deep: #FFEFD6;
+  --cream: #FFF6EC;
+  --cream-deep: #FFEEDD;
   --ink: #3A1F16;
   --ink-soft: #7A5C4C;
   --line: #F0DCC0;
 
-  /* Reusable gloss layers — a soft top sheen fading to a faint base shadow,
-     used consistently across cards, buttons, and inputs so the "glossy"
-     feel reads as one material, not a per-element accident */
-  --gloss-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 45%, rgba(0, 0, 0, 0.05) 100%);
-  --gloss-sheen-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.14) 100%);
-
-  /* Dark theme palette — menstrual tracker */
+  /* Dark Theme Palette for Menstrual Tracker */
   --dark-bg: #0d0714;
-  --dark-card: rgba(28, 15, 42, 0.75);
-  --dark-border: rgba(255, 59, 110, 0.25);
+  --dark-card: rgba(28, 15, 42, 0.78);
+  --dark-border: rgba(255, 59, 110, 0.3);
   --neon-pink: #FF2A6D;
-  --neon-glow: rgba(255, 42, 109, 0.25);
+  --neon-glow: rgba(255, 42, 109, 0.3);
 }
 
-/* ---------- 2. BASE ---------- */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -41,15 +30,19 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* SOFT PASTEL LIQUID-AURA BACKGROUND */
 body {
   background:
-    radial-gradient(circle at top left, rgba(255, 201, 60, 0.32), transparent 45%),
-    radial-gradient(circle at bottom right, rgba(255, 59, 110, 0.16), transparent 50%),
-    linear-gradient(160deg, var(--cream), var(--cream-deep));
+    radial-gradient(circle at 12% 15%, rgba(255, 183, 138, 0.55) 0%, transparent 45%),
+    radial-gradient(circle at 88% 20%, rgba(255, 179, 198, 0.48) 0%, transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(255, 226, 158, 0.5) 0%, transparent 55%),
+    linear-gradient(135deg, #FFF6EC 0%, #FFEEDD 50%, #FFF0F4 100%);
+  background-attachment: fixed;
   color: var(--ink);
   min-height: 100vh;
 }
 
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -61,25 +54,21 @@ body {
   background: var(--turmeric);
   border-radius: 99px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--marigold);
-}
 
-/* ---------- 3. SURFACES (cards, nav) ---------- */
+/* Glassmorphism Light Cards */
 .glass-card {
   position: relative;
   background: rgba(255, 255, 255, 0.76);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1.5px solid rgba(255, 255, 255, 0.95);
   border-radius: 22px;
   padding: 26px 24px 24px;
-  box-shadow: 0 12px 35px -5px rgba(255, 122, 41, 0.16), 0 4px 12px -2px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  box-shadow: 0 12px 35px -5px rgba(255, 122, 41, 0.12), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   overflow: hidden;
 }
 
-/* Marigold garland stripe along the top edge */
 .glass-card::before {
   content: "";
   position: absolute;
@@ -95,21 +84,6 @@ body {
   );
 }
 
-/* Diagonal glass sheen — the actual "glossy" read, sits above the content
-   but ignores clicks so it never blocks interaction */
-.glass-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 30%);
-  pointer-events: none;
-}
-
-.glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 16px 40px -6px rgba(255, 122, 41, 0.22), 0 6px 16px -2px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
 .dark-glass-card {
   position: relative;
   background: var(--dark-card);
@@ -118,34 +92,20 @@ body {
   border: 1px solid var(--dark-border);
   border-radius: 22px;
   padding: 24px;
-  box-shadow: 0 10px 30px -5px var(--neon-glow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 10px 30px -5px var(--neon-glow);
   color: #f8fafc;
-  overflow: hidden;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.dark-glass-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0) 35%);
-  pointer-events: none;
-}
-
-.dark-glass-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 36px -6px var(--neon-glow), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-}
-
 .glass-nav {
-  background: rgba(255, 248, 237, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 246, 236, 0.88);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-bottom: 2px solid var(--turmeric);
-  box-shadow: 0 4px 20px rgba(255, 122, 41, 0.1), inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: 0 4px 24px rgba(255, 122, 41, 0.1);
 }
 
-/* ---------- 4. LAYOUT ---------- */
+/* Layout Engine */
 .grid-4 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -170,13 +130,14 @@ body {
   }
 }
 
-/* ---------- 5. INPUTS ---------- */
+/* Form Inputs */
 input[type="text"],
 input[type="number"],
 input[type="date"],
 input[type="month"],
 input[type="password"],
-select {
+select,
+textarea {
   width: 100%;
   height: 44px;
   padding: 0 14px;
@@ -187,24 +148,24 @@ select {
   font-size: 0.92rem;
   outline: none;
   transition: all 0.2s ease;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
 }
 
-input:hover, select:hover {
-  border-color: var(--marigold-light);
+textarea {
+  height: auto;
+  padding: 10px 14px;
 }
 
-input:focus, select:focus {
+input:focus, select:focus, textarea:focus {
   border-color: var(--marigold);
   background: #ffffff;
-  box-shadow: 0 0 0 3.5px rgba(255, 122, 41, 0.2), inset 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 0 0 3.5px rgba(255, 122, 41, 0.2);
 }
 
 .dark-input {
   background: rgba(15, 8, 24, 0.85) !important;
   border: 1.5px solid rgba(255, 59, 110, 0.4) !important;
   color: #f8fafc !important;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark-input:focus {
@@ -212,14 +173,49 @@ input:focus, select:focus {
   box-shadow: 0 0 0 3.5px var(--neon-glow) !important;
 }
 
-/* ---------- 6. BUTTONS ---------- */
+/* GLOSSY 3D BUTTON SYSTEM */
+.btn-glossy-hero {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  height: 48px;
+  padding: 0 26px;
+  border-radius: 99px;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.15) 100%),
+    linear-gradient(135deg, #FF6B2B 0%, #FF2A6D 100%);
+  color: #ffffff !important;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 8px 22px rgba(255, 42, 109, 0.38), inset 0 2px 0 rgba(255, 255, 255, 0.8);
+  transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+
+.btn-glossy-hero:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 12px 28px rgba(255, 42, 109, 0.5), inset 0 2px 0 #ffffff;
+}
+
 .btn-primary {
+  -webkit-appearance: none;
+  appearance: none;
   height: 44px;
   padding: 0 22px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: var(--gloss-sheen-strong), linear-gradient(135deg, var(--marigold), var(--kumkum));
-  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.15) 100%),
+    linear-gradient(135deg, var(--marigold), var(--kumkum));
+  color: #ffffff !important;
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
@@ -228,33 +224,49 @@ input:focus, select:focus {
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0 5px 16px rgba(255, 59, 110, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 18px rgba(255, 59, 110, 0.35), inset 0 1.5px 0 rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  outline: none;
 }
 
 .btn-primary:hover {
-  transform: translateY(-1.5px);
-  box-shadow: 0 8px 22px rgba(255, 59, 110, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+  box-shadow: 0 9px 24px rgba(255, 59, 110, 0.45), inset 0 1.5px 0 rgba(255, 255, 255, 0.9);
 }
 
-.btn-primary:active {
-  transform: translateY(0);
-  box-shadow: 0 3px 10px rgba(255, 59, 110, 0.3);
-}
-
-.btn-primary:focus-visible,
-.btn-secondary:focus-visible,
-.btn-neon:focus-visible {
-  outline: 2px solid var(--marigold-dark);
-  outline-offset: 2px;
+.btn-pdf {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.15) 100%),
+    linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff !important;
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35), inset 0 1.5px 0 rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  outline: none;
 }
 
 .btn-secondary {
+  -webkit-appearance: none;
+  appearance: none;
   height: 44px;
   padding: 0 18px;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 248, 237, 0.65) 100%);
+  border: 1.5px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 248, 237, 0.7) 100%);
   color: var(--ink-soft);
   font-weight: 700;
   font-size: 0.9rem;
@@ -264,24 +276,29 @@ input:focus, select:focus {
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  outline: none;
 }
 
 .btn-secondary:hover {
   background: #ffffff;
   border-color: var(--turmeric);
   color: var(--ink);
-  transform: translateY(-1px);
-  box-shadow: 0 5px 14px rgba(255, 122, 41, 0.14);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 16px rgba(255, 122, 41, 0.15);
 }
 
 .btn-neon {
+  -webkit-appearance: none;
+  appearance: none;
   height: 44px;
   padding: 0 22px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.2) 100%), linear-gradient(135deg, #FF2A6D, #9A1750);
-  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.2) 100%),
+    linear-gradient(135deg, #FF2A6D, #9A1750);
+  color: #ffffff !important;
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
@@ -290,16 +307,27 @@ input:focus, select:focus {
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0 6px 18px rgba(255, 42, 109, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: 0 6px 20px rgba(255, 42, 109, 0.45), inset 0 1.5px 0 rgba(255, 255, 255, 0.6);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  outline: none;
 }
 
-.btn-neon:hover {
-  transform: translateY(-1.5px);
-  box-shadow: 0 8px 24px rgba(255, 42, 109, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+/* User Badge Pill */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(255, 122, 41, 0.18), rgba(255, 59, 110, 0.18));
+  color: var(--marigold-dark);
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border: 1px solid rgba(255, 122, 41, 0.25);
+  box-shadow: 0 2px 8px rgba(255, 122, 41, 0.08);
 }
 
-/* ---------- 7. TABLE ---------- */
+/* Table Alignment */
 .table-container {
   width: 100%;
   overflow-x: auto;
@@ -313,10 +341,10 @@ table {
 }
 
 th {
-  background: linear-gradient(180deg, rgba(255, 201, 60, 0.28), rgba(255, 201, 60, 0.14));
+  background: rgba(255, 201, 60, 0.22);
   color: var(--brass);
   font-weight: 800;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 14px 18px;
@@ -324,54 +352,13 @@ th {
 }
 
 td {
-  padding: 15px 18px;
+  padding: 16px 18px;
   border-bottom: 1px solid var(--line);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   color: var(--ink);
   vertical-align: middle;
 }
 
 tr:last-child td {
   border-bottom: none;
-}
-
-tr:hover td {
-  background: rgba(255, 201, 60, 0.1);
-}
-
-/* ---------- 8. BADGES & PILLS ---------- */
-.user-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: linear-gradient(135deg, rgba(255, 122, 41, 0.2), rgba(255, 59, 110, 0.2));
-  color: var(--marigold-dark);
-  padding: 5px 12px;
-  border-radius: 99px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  border: 1px solid rgba(255, 122, 41, 0.25);
-}
-
-.category-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 99px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  background: rgba(255, 255, 255, 0.75);
-  border: 1px solid var(--line);
-  color: var(--ink-soft);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.category-pill::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--kumkum);
-  display: inline-block;
 }
