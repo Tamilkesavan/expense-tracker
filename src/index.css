@@ -1,52 +1,141 @@
+/* ==========================================================================
+   TAMIL POOJA SUITE — macOS LIQUID GOLD GLASSMORPHISM SYSTEM
+   ========================================================================== */
+
+:root {
+  /* Brand Palette */
+  --marigold: #FF8A3D;
+  --marigold-dark: #E85D04;
+  --kumkum: #FF2E63;
+  --kumkum-deep: #C4114A;
+  --turmeric: #FFCB4D;
+  --gold-metallic: #D4A017;
+  --gold-rim: rgba(255, 215, 0, 0.45);
+  --emerald: #0FA968;
+  --cream-bg: #FFF8EE;
+  --cream-deep: #FFEED2;
+  --ink: #2B160E;
+  --ink-soft: #7A5240;
+  --line: rgba(212, 160, 23, 0.22);
+
+  /* Dark Theme Palette (Menstrual Tracker Tab) */
+  --dark-bg: #0B0614;
+  --dark-card: rgba(30, 14, 46, 0.78);
+  --neon-pink: #FF2E7A;
+  --neon-pink-deep: #9A1750;
+  --neon-violet: #A855F7;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* Muted Light-Dark Neutral Background */
 body {
-  background: linear-gradient(135deg, #f8f6fb 0%, #f0ecf7 50%, #faf5f9 100%);
-  color: #1e293b; /* Slate 800 */
+  background:
+    radial-gradient(circle at 15% 20%, rgba(255, 214, 224, 0.35), transparent 45%),
+    radial-gradient(circle at 85% 80%, rgba(255, 244, 196, 0.3), transparent 48%),
+    linear-gradient(160deg, #d8e8de, #e6d8e8 55%, #cfd8f6);
+
+  background-attachment: fixed;
+  color: #4A4A4A;
   min-height: 100vh;
 }
 
-/* Scrollbar styling */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(240, 236, 247, 0.5);
+  background: rgba(255, 238, 210, 0.5);
 }
 ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 4px;
+  background: var(--turmeric);
+  border-radius: 99px;
 }
 
-/* Glassmorphism Utility */
+/* macOS Window Glass Panels */
 .glass-card {
-  background: rgba(255, 255, 255, 0.6);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 16px;
-  padding: 20px;
-  box-shadow: 0 8px 32px 0 rgba(115, 19, 88, 0.04);
-}
-
-.glass-nav {
+  position: relative;
   background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 20px; /* macOS Squircle Curve */
+  padding: 26px 24px 24px;
+  box-shadow: 
+    inset 0 1px 1.5px rgba(255, 255, 255, 0.9),
+    0 12px 32px -6px rgba(212, 160, 23, 0.16), 0 4px 12px -2px rgba(43, 22, 14, 0.03);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+  overflow: hidden;
 }
 
-/* Grid Layouts */
+/* Top Liquid Metallic Gold Accent Edge */
+.glass-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #FFE29F 0%, #FFAE34 35%, var(--marigold) 70%, var(--kumkum) 100%);
+}
+
+.glass-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--gold-rim);
+  box-shadow: 
+    inset 0 1px 2px #ffffff,
+    0 16px 38px -6px rgba(212, 160, 23, 0.24);
+}
+
+.dark-glass-card {
+  position: relative;
+  background: var(--dark-card);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(255, 46, 122, 0.3);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 10px 30px -5px rgba(255, 46, 122, 0.32);
+  color: #f8fafc;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.dark-glass-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--neon-pink) 0%, var(--neon-violet) 100%);
+}
+
+.dark-glass-card:hover {
+  transform: translateY(-2px);
+}
+
+/* macOS Floating Blurred Top Menu Bar */
+.glass-nav {
+  background: rgba(255, 251, 243, 0.78);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-bottom: 1px solid var(--gold-rim);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+
+/* Layout Engine */
 .grid-4 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 20px;
 }
 
 .grid-3 {
@@ -57,14 +146,216 @@ body {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 24px;
 }
 
-/* Custom Table */
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form Inputs */
+input[type="text"],
+input[type="number"],
+input[type="date"],
+input[type="month"],
+input[type="password"],
+select,
+textarea {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1.5px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font-size: 0.92rem;
+  outline: none;
+  transition: all 0.2s ease;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+}
+
+textarea {
+  height: auto;
+  padding: 10px 14px;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--marigold);
+  background: #ffffff;
+  box-shadow: 0 0 0 3.5px rgba(255, 138, 61, 0.22);
+}
+
+.dark-input {
+  background: rgba(15, 8, 24, 0.85) !important;
+  border: 1.5px solid rgba(255, 46, 122, 0.4) !important;
+  color: #f8fafc !important;
+}
+
+.dark-input:focus {
+  border-color: var(--neon-pink) !important;
+  box-shadow: 0 0 0 3.5px rgba(255, 46, 122, 0.3) !important;
+}
+
+/* ==========================================================================
+   macOS LIQUID GOLD 3D BUTTON SYSTEM
+   ========================================================================== */
+
+.btn-glossy-hero, .btn-primary, .btn-pdf, .btn-secondary, .btn-neon {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px; /* macOS Squircle Corner */
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  text-decoration: none;
+}
+
+/* macOS Hero Action Button */
+.btn-glossy-hero {
+  height: 48px;
+  padding: 0 28px;
+  border-radius: 99px;
+  border: 1px solid var(--gold-rim);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.12) 100%),
+    linear-gradient(135deg, #FF8A3D 0%, #D4A017 50%, #FF2E63 100%);
+  color: #ffffff !important;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+    0 8px 22px -4px rgba(212, 160, 23, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.btn-glossy-hero:hover {
+  transform: translateY(-2px) scale(1.02);
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow:
+    inset 0 2px 0 #ffffff,
+    0 12px 28px -4px rgba(212, 160, 23, 0.6);
+}
+
+.btn-glossy-hero:active {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 4px 12px rgba(212, 160, 23, 0.3);
+}
+
+/* Primary Button */
+.btn-primary {
+  height: 44px;
+  padding: 0 22px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.15) 100%),
+    linear-gradient(135deg, var(--marigold), var(--kumkum));
+  color: #ffffff !important;
+  font-size: 0.92rem;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+    0 6px 18px rgba(255, 46, 99, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 2px 0 #ffffff,
+    0 9px 24px rgba(255, 46, 99, 0.48);
+}
+
+/* PDF Button */
+.btn-pdf {
+  height: 44px;
+  padding: 0 20px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.15) 100%),
+    linear-gradient(135deg, #0284c7, #2563eb);
+  color: #ffffff !important;
+  font-size: 0.92rem;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.85),
+    0 6px 18px rgba(37, 99, 235, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.btn-pdf:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 2px 0 #ffffff,
+    0 9px 24px rgba(37, 99, 235, 0.48);
+}
+
+/* Secondary Button */
+.btn-secondary {
+  height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 248, 237, 0.7) 100%);
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.btn-secondary:hover {
+  background: #ffffff;
+  border-color: var(--gold-metallic);
+  color: var(--ink);
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 16px rgba(212, 160, 23, 0.2);
+}
+
+/* Neon Dark Variant */
+.btn-neon {
+  height: 44px;
+  padding: 0 22px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.35) 0%, rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.2) 100%),
+    linear-gradient(135deg, var(--neon-pink), var(--neon-pink-deep));
+  color: #ffffff !important;
+  font-size: 0.92rem;
+  box-shadow: 0 6px 20px rgba(255, 46, 122, 0.45), inset 0 1.5px 0 rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.btn-neon:hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 9px 26px rgba(255, 46, 122, 0.6), inset 0 1.5px 0 rgba(255, 255, 255, 0.8);
+}
+
+/* User Badge Pill */
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(255, 138, 61, 0.18), rgba(255, 46, 99, 0.18));
+  color: var(--marigold-dark);
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  border: 1px solid rgba(212, 160, 23, 0.35);
+  box-shadow: 0 2px 8px rgba(255, 138, 61, 0.1);
+}
+
+/* Table Alignment */
 .table-container {
   width: 100%;
   overflow-x: auto;
+  border-radius: 16px;
 }
 
 table {
@@ -73,24 +364,25 @@ table {
   text-align: left;
 }
 
-th, td {
-  padding: 14px 16px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-}
-
 th {
-  color: #64748b; /* Slate 500 */
-  font-weight: 600;
-  font-size: 0.85rem;
+  background: rgba(255, 203, 77, 0.22);
+  color: var(--gold-metallic);
+  font-weight: 800;
+  font-size: 0.78rem;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+  padding: 14px 18px;
+  border-bottom: 2px solid var(--turmeric);
 }
 
 td {
-  color: #1e293b;
-  font-size: 0.95rem;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.92rem;
+  color: var(--ink);
+  vertical-align: middle;
 }
 
-tr:hover {
-  background: rgba(255, 255, 255, 0.4);
+tr:last-child td {
+  border-bottom: none;
 }

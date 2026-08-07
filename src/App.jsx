@@ -54,9 +54,8 @@ import {
 
 // --- ALLOWED USER LOGINS (Tamil, Pooja, Admin) ---
 const ALLOWED_USERS = [
-  { username: 'tamil', password: 'tamil123', name: 'Tamil' },
-  { username: 'pooja', password: 'pooja123', name: 'Pooja' },
-  { username: 'admin', password: 'admin', name: 'Admin' }
+  { username: 'tamil', password: 'tamil', name: 'Tamil' },
+  { username: 'pooja', password: 'pooja', name: 'Pooja' },
 ];
 
 // --- SEEDED CATEGORIES (Updated Travel -> Grocery) ---
@@ -851,13 +850,13 @@ export default function App() {
             {currentView === 'dashboard' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 
-                {/* PROMINENT HERO BAR - CLEAN GREETING & GLOSSY BUTTON */}
+                {/* HERO BAR - CLEAN GREETING & GLOSSY BUTTON (justifyContent fixed) */}
                 <div
                   className="glass-card"
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    justify: 'space-between',
+                    justifyContent: 'space-between',
                     flexWrap: 'wrap',
                     gap: '16px',
                     padding: '18px 24px',
