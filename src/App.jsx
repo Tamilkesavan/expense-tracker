@@ -36,7 +36,6 @@ import {
   ChevronUp,
   Settings,
   Coins,
-  CalendarDays,
   Award
 } from 'lucide-react';
 import {
@@ -142,7 +141,7 @@ export default function App() {
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // --- VIEW STATE (4 TABS: dashboard | transactions | loans | menstrual) ---
+  // --- VIEW STATE (4 TABS) ---
   const [currentView, setCurrentView] = useState('dashboard');
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [expenses, setExpenses] = useState([]);
@@ -251,14 +250,14 @@ export default function App() {
   const [editingInstId, setEditingInstId] = useState(null);
   const [instForm, setInstForm] = useState({ amount_paid: '', notes: '' });
 
-  // --- COMPUTED DASHBOARD METRICS (TOTAL SPENT, LOGGED COUNT, NO-EXPENSE DAYS) ---
+  // --- COMPUTED DASHBOARD METRICS ---
   const currentMonthKey = getCurrentMonthKey();
 
   const currentMonthExpenses = useMemo(() => {
     return expenses.filter((e) => e.expense_date?.startsWith(currentMonthKey));
   }, [expenses, currentMonthKey]);
 
-  // 1. Total Spent
+  // 1. Total Spent Current Month
   const currentMonthExpensesTotal = useMemo(() => {
     return currentMonthExpenses.reduce((acc, e) => acc + Number(e.amount), 0);
   }, [currentMonthExpenses]);
@@ -271,14 +270,11 @@ export default function App() {
     const today = new Date();
     const [currYear, currMonth] = currentMonthKey.split('-').map(Number);
     
-    // Total calendar days elapsed so far in the active month
     let daysToConsider = today.getDate();
     if (today.getFullYear() !== currYear || (today.getMonth() + 1) !== currMonth) {
-      // If viewing a previous month, consider full month days
       daysToConsider = new Date(currYear, currMonth, 0).getDate();
     }
 
-    // Set of distinct dates that had at least one expense logged
     const loggedDatesSet = new Set(
       currentMonthExpenses
         .map((e) => e.expense_date)
@@ -286,8 +282,7 @@ export default function App() {
     );
 
     const activeDaysWithExpenses = loggedDatesSet.size;
-    const zeroDays = Math.max(0, daysToConsider - activeDaysWithExpenses);
-    return zeroDays;
+    return Math.max(0, daysToConsider - activeDaysWithExpenses);
   }, [currentMonthExpenses, currentMonthKey]);
 
   const monthlyTrendData = useMemo(() => {
@@ -310,6 +305,33 @@ export default function App() {
       })
       .filter((item) => item.value > 0);
   }, [currentMonthExpenses, categories]);
+
+  // --- PREVIOUS MONTH CATEGORY BREAKDOWN LOGIC ---
+  const isPreviousMonthSelected = selectedMonth && selectedMonth !== currentMonthKey;
+
+  const selectedMonthCategorySpend = useMemo(() => {
+    if (!isPreviousMonthSelected) return [];
+
+    const monthExpenses = expenses.filter((e) => e.expense_date?.startsWith(selectedMonth));
+
+    return categories
+      .map((cat) => {
+        const matchingExpenses = monthExpenses.filter((e) => e.category_id === cat.id);
+        const total = matchingExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+        const count = matchingExpenses.length;
+        return {
+          ...cat,
+          total,
+          count
+        };
+      })
+      .filter((cat) => cat.total > 0)
+      .sort((a, b) => b.total - a.total);
+  }, [expenses, selectedMonth, isPreviousMonthSelected, categories]);
+
+  const selectedMonthTotalSpend = useMemo(() => {
+    return selectedMonthCategorySpend.reduce((acc, c) => acc + c.total, 0);
+  }, [selectedMonthCategorySpend]);
 
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
@@ -733,7 +755,7 @@ export default function App() {
   // --- MAIN APP RENDER (AUTHENTICATED) ---
   return (
     <div style={{ minHeight: '100vh', paddingBottom: '48px', background: currentView === 'menstrual' ? '#0B0614' : 'transparent', transition: 'background 0.3s ease' }}>
-      {/* HEADER / NAVIGATION (BUDGETS TAB REMOVED) */}
+      {/* HEADER / NAVIGATION */}
       <nav className="glass-nav" style={{ position: 'sticky', top: 0, zIndex: 100, padding: '14px 24px', background: currentView === 'menstrual' ? 'rgba(11, 6, 20, 0.9)' : undefined, borderColor: currentView === 'menstrual' ? 'rgba(255, 46, 122, 0.3)' : undefined }}>
         <div style={{ maxWidth: '1120px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -828,7 +850,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* VIEW 1: DASHBOARD (REVAMPED WITH 3 METRIC CARDS) */}
+            {/* VIEW 1: DASHBOARD */}
             {currentView === 'dashboard' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 
@@ -1035,11 +1057,16 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 2: TRANSACTIONS */}
+            {/* VIEW 2: TRANSACTIONS (WITH CONDITIONAL PREVIOUS MONTH CATEGORY BREAKDOWN) */}
             {currentView === 'transactions' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                  <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#2B160E' }}>Transactions</h2>
+                  <div>
+                    <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#2B160E' }}>Transactions</h2>
+                    <p style={{ fontSize: '0.8rem', color: '#6E5347', marginTop: '2px' }}>
+                      Viewing records for {formatMonthLabel(selectedMonth)}
+                    </p>
+                  </div>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                     <button className="btn-pdf" onClick={handleExportPDF}>
                       <FileText size={16} /> Export PDF
@@ -1050,6 +1077,7 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* FILTER CONTROLS BAR */}
                 <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
                   <div>
                     <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SEARCH KEYWORD</label>
@@ -1057,7 +1085,7 @@ export default function App() {
                       <Search size={16} color="#6E5347" style={{ position: 'absolute', left: '12px' }} />
                       <input
                         type="text"
-                        placeholder="Filter e.g. flower, Tamil..."
+                        placeholder="Filter e.g. flower, petrol, Tamil..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         style={{ paddingLeft: '36px', paddingRight: '32px' }}
@@ -1081,25 +1109,92 @@ export default function App() {
                   </div>
 
                   <div>
-                    <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTH</label>
+                    <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTH SELECTOR</label>
                     <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
                   </div>
                 </div>
 
+                {/* ⭐ PREVIOUS MONTH CATEGORY BREAKDOWN SECTION (Shown ONLY for previous months) */}
+                {isPreviousMonthSelected && (
+                  <div className="glass-card" style={{ padding: '20px 24px', border: '1.5px solid rgba(255, 122, 41, 0.35)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                          HISTORICAL SUMMARY
+                        </span>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#2B160E', marginTop: '2px' }}>
+                          {formatMonthLabel(selectedMonth)} — Category Wise Total
+                        </h3>
+                      </div>
+                      <div style={{ background: 'rgba(255, 122, 41, 0.12)', border: '1px solid rgba(255, 122, 41, 0.3)', padding: '6px 16px', borderRadius: '12px', textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.7rem', color: '#6E5347', display: 'block', fontWeight: '700' }}>MONTH TOTAL SPENT</span>
+                        <strong style={{ fontSize: '1.15rem', color: '#E85D04', fontWeight: '800' }}>
+                          {formatCurrency(selectedMonthTotalSpend)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {selectedMonthCategorySpend.length === 0 ? (
+                      <p style={{ fontSize: '0.88rem', color: '#6E5347', fontStyle: 'italic' }}>
+                        No expenses were logged in {formatMonthLabel(selectedMonth)}.
+                      </p>
+                    ) : (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                        {selectedMonthCategorySpend.map((cat) => {
+                          const IconComponent = ICON_MAP[cat.icon] || MoreHorizontal;
+                          const percentage = selectedMonthTotalSpend > 0 ? Math.round((cat.total / selectedMonthTotalSpend) * 100) : 0;
+                          return (
+                            <div
+                              key={cat.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '12px 14px',
+                                background: '#ffffff',
+                                borderRadius: '14px',
+                                border: '1px solid var(--line)',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ background: cat.color + '18', color: cat.color, padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                                  <IconComponent size={16} />
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#2B160E' }}>{cat.name}</div>
+                                  <div style={{ fontSize: '0.72rem', color: '#6E5347' }}>
+                                    {cat.count} {cat.count === 1 ? 'entry' : 'entries'} ({percentage}%)
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: '800', color: '#2B160E', fontSize: '0.95rem' }}>
+                                {formatCurrency(cat.total)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SEARCH MATCH BANNER */}
                 {searchQuery.trim() !== '' && (
                   <div className="glass-card" style={{ background: 'rgba(255, 122, 41, 0.1)', border: '1px solid rgba(255, 122, 41, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '16px 20px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <div style={{ background: '#FF7A29', color: 'white', borderRadius: '50%', padding: '6px', display: 'flex' }}><Search size={16} /></div>
                       <span style={{ fontSize: '0.92rem', color: '#2B160E' }}>
-                        Found <strong>{filteredExpenses.length}</strong> transaction{filteredExpenses.length === 1 ? '' : 's'} matching <strong style={{ color: '#E85D04' }}>"{searchQuery}"</strong>
+                        Found <strong>{filteredExpenses.length}</strong> transaction{filteredExpenses.length === 1 ? '' : 's'} matching <strong style={{ color: '#E8600F' }}>"{searchQuery}"</strong>
                       </span>
                     </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#E85D04' }}>
+                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#E8600F' }}>
                       Total: {formatCurrency(searchTotalAmount)}
                     </div>
                   </div>
                 )}
 
+                {/* ITEMIZED TRANSACTIONS TABLE */}
                 <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
                   <div className="table-container">
                     {filteredExpenses.length === 0 ? (
@@ -1238,7 +1333,6 @@ export default function App() {
                               <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#2B160E', marginTop: '6px' }}>{sch.title}</h3>
                             </div>
 
-                            {/* EDIT SCHEME & DELETE SCHEME BUTTONS */}
                             <div style={{ display: 'flex', gap: '6px' }}>
                               <button
                                 onClick={() => handleOpenEditScheme(sch)}
@@ -1539,12 +1633,12 @@ export default function App() {
 
                 <div>
                   <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Calendar size={18} color="#FF2E7A" /> Period History Grid
+                    <Calendar size={18} color="#FF2A6D" /> Period History Grid
                   </h3>
 
                   {cycles.length === 0 ? (
                     <div className="dark-glass-card" style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                      <HeartPulse size={40} style={{ marginBottom: '12px', opacity: 0.4, color: '#FF2E7A' }} />
+                      <HeartPulse size={40} style={{ marginBottom: '12px', opacity: 0.4, color: '#FF2A6D' }} />
                       <p style={{ fontSize: '0.95rem' }}>No period cycles logged yet. Use the form above to record your first cycle.</p>
                     </div>
                   ) : (
