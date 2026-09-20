@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 import {
   Wallet,
   TrendingDown,
+  TrendingUp,
   Plus,
   Trash2,
   Edit2,
@@ -252,6 +253,7 @@ export default function App() {
 
   // --- COMPUTED DASHBOARD METRICS ---
   const currentMonthKey = getCurrentMonthKey();
+  const todayDateStr = new Date().toISOString().split('T')[0];
 
   const currentMonthExpenses = useMemo(() => {
     return expenses.filter((e) => e.expense_date?.startsWith(currentMonthKey));
@@ -281,9 +283,65 @@ export default function App() {
         .filter(Boolean)
     );
 
-    const activeDaysWithExpenses = loggedDatesSet.size;
-    return Math.max(0, daysToConsider - activeDaysWithExpenses);
+    return Math.max(0, daysToConsider - loggedDatesSet.size);
   }, [currentMonthExpenses, currentMonthKey]);
+
+  // 4. Total Spent Today & Entry Count
+  const todayExpensesList = useMemo(() => {
+    return expenses.filter((e) => e.expense_date === todayDateStr);
+  }, [expenses, todayDateStr]);
+
+  const todaySpentTotal = useMemo(() => {
+    return todayExpensesList.reduce((acc, e) => acc + Number(e.amount), 0);
+  }, [todayExpensesList]);
+
+  const todayExpensesCount = todayExpensesList.length;
+
+  // Daily Pace
+  const daysElapsedThisMonth = new Date().getDate() || 1;
+  const dailyAverageSpend = Math.round(currentMonthExpensesTotal / daysElapsedThisMonth);
+
+  // Category Peak Spending Benchmark Data
+  const allTimeCategoryPeaks = useMemo(() => {
+    const catMonthSpendMap = {};
+
+    expenses.forEach((e) => {
+      if (!e.category_id || !e.expense_date) return;
+      const mKey = getMonthKey(e.expense_date);
+      if (!catMonthSpendMap[e.category_id]) {
+        catMonthSpendMap[e.category_id] = {};
+      }
+      catMonthSpendMap[e.category_id][mKey] = (catMonthSpendMap[e.category_id][mKey] || 0) + Number(e.amount);
+    });
+
+    return categories.map((cat) => {
+      const monthData = catMonthSpendMap[cat.id] || {};
+      let peakMonth = null;
+      let peakAmount = 0;
+
+      Object.entries(monthData).forEach(([mKey, amt]) => {
+        if (amt > peakAmount) {
+          peakAmount = amt;
+          peakMonth = mKey;
+        }
+      });
+
+      const currentMonthSpend = monthData[currentMonthKey] || 0;
+      const pctOfPeak = peakAmount > 0 ? Math.min(Math.round((currentMonthSpend / peakAmount) * 100), 100) : 0;
+      const headroom = Math.max(0, peakAmount - currentMonthSpend);
+      const isCurrentMonthPeak = peakMonth === currentMonthKey && peakAmount > 0;
+
+      return {
+        ...cat,
+        peakMonth: peakMonth ? formatMonthLabel(peakMonth) : 'No Data',
+        peakAmount,
+        currentMonthSpend,
+        pctOfPeak,
+        headroom,
+        isCurrentMonthPeak
+      };
+    }).sort((a, b) => b.peakAmount - a.peakAmount);
+  }, [expenses, categories, currentMonthKey]);
 
   const monthlyTrendData = useMemo(() => {
     const months = getLast6Months();
@@ -306,7 +364,7 @@ export default function App() {
       .filter((item) => item.value > 0);
   }, [currentMonthExpenses, categories]);
 
-  // --- PREVIOUS MONTH CATEGORY BREAKDOWN LOGIC ---
+  // Previous Month Breakdown in Transactions Tab
   const isPreviousMonthSelected = selectedMonth && selectedMonth !== currentMonthKey;
 
   const selectedMonthCategorySpend = useMemo(() => {
@@ -353,14 +411,14 @@ export default function App() {
     return filteredExpenses.reduce((acc, e) => acc + Number(e.amount), 0);
   }, [filteredExpenses]);
 
-  // --- MENSTRUAL METRICS ---
+  // Menstrual metrics
   const avgCycleDays = useMemo(() => {
     if (cycles.length === 0) return 0;
     const totalDays = cycles.reduce((acc, c) => acc + calculateDaysDiff(c.start_date, c.end_date), 0);
     return Math.round(totalDays / cycles.length);
   }, [cycles]);
 
-  // --- EXPORT TO FORMATTED PDF HANDLER ---
+  // Export PDF Handler
   const handleExportPDF = () => {
     if (filteredExpenses.length === 0) {
       alert('No transactions available to print/export.');
@@ -385,7 +443,7 @@ export default function App() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Tamil Pooja Suite - Expenses Report</title>
+          <title>Tamil Pooja Suite - Report</title>
           <style>
             body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 24px; color: #2B160E; }
             h1 { font-size: 20px; color: #FF7A29; margin-bottom: 4px; }
@@ -397,26 +455,13 @@ export default function App() {
           </style>
         </head>
         <body>
-          <h1>Tamil Pooja Suite - Expense Report</h1>
-          <p>Generated on ${new Date().toLocaleDateString('en-IN')} | Filter Month: ${formatMonthLabel(selectedMonth)} | Total Count: ${filteredExpenses.length}</p>
+          <h1>Tamil Pooja Suite - Expense Statement</h1>
+          <p>Generated on ${new Date().toLocaleDateString('en-IN')} | Month: ${formatMonthLabel(selectedMonth)} | Count: ${filteredExpenses.length}</p>
           <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Description</th>
-                <th>Category</th>
-                <th>Added By</th>
-                <th>Date</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
+            <thead><tr><th>#</th><th>Description</th><th>Category</th><th>Added By</th><th>Date</th><th>Amount</th></tr></thead>
+            <tbody>${tableRows}</tbody>
           </table>
-          <div class="total-banner">
-            Total Filtered Amount: ${formatCurrency(searchTotalAmount)}
-          </div>
+          <div class="total-banner">Total Filtered Outflow: ${formatCurrency(searchTotalAmount)}</div>
         </body>
       </html>
     `);
@@ -428,7 +473,7 @@ export default function App() {
     }, 250);
   };
 
-  // --- EXPENSE HANDLERS ---
+  // Add Expense
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0) return;
@@ -460,6 +505,7 @@ export default function App() {
     }
   };
 
+  // Delete Expense
   const handleDeleteExpense = async () => {
     if (!deleteTargetId) return;
     const { error } = await supabase.from('expenses').delete().eq('id', deleteTargetId);
@@ -471,7 +517,7 @@ export default function App() {
     }
   };
 
-  // --- LOANS & CHIT FUNDS HANDLERS ---
+  // Add Scheme
   const handleAddScheme = async (e) => {
     e.preventDefault();
     const months = parseInt(schemeForm.total_months) || 12;
@@ -548,14 +594,13 @@ export default function App() {
 
     const months = parseInt(schemeForm.total_months) || 12;
     const monthlyAmt = parseFloat(schemeForm.monthly_amount) || 0;
-    const targetAmt = months * monthlyAmt;
 
     const updatedPayload = {
       title: schemeForm.title,
       type: schemeForm.type,
       total_months: months,
       monthly_amount: monthlyAmt,
-      total_target_amount: targetAmt,
+      total_target_amount: months * monthlyAmt,
       start_date: schemeForm.start_date,
       general_notes: schemeForm.general_notes
     };
@@ -660,44 +705,20 @@ export default function App() {
       .slice(0, 6);
   }, [expenses]);
 
+  // Page background: Keep consistent white/cream glass for all tabs except menstrual
+  const pageBackground = currentView === 'menstrual' ? '#0B0614' : 'transparent';
+
   // --- GLOSSY LOGIN SCREEN ---
   if (!isAuthenticated) {
     return (
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '20px',
-          position: 'relative',
-          overflow: 'hidden'
-        }}
-      >
-        <div style={{ position: 'absolute', top: '-10%', left: '-5%', width: '380px', height: '380px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 122, 41, 0.45) 0%, rgba(255, 59, 110, 0.1) 70%)', filter: 'blur(60px)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: '-10%', right: '-5%', width: '420px', height: '420px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(255, 59, 110, 0.45) 0%, rgba(255, 201, 60, 0.1) 70%)', filter: 'blur(70px)', pointerEvents: 'none' }} />
-
-        <div
-          className="glass-card"
-          style={{
-            width: '100%',
-            maxWidth: '400px',
-            padding: '36px 30px',
-            background: 'rgba(255, 255, 255, 0.92)',
-            backdropFilter: 'blur(28px)',
-            WebkitBackdropFilter: 'blur(28px)',
-            border: '1.5px solid rgba(255, 255, 255, 0.95)',
-            borderRadius: '24px',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.15), 0 10px 20px rgba(255, 59, 110, 0.1)',
-            zIndex: 10
-          }}
-        >
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+        <div className="glass-card" style={{ width: '100%', maxWidth: '400px', background: 'rgba(255, 255, 255, 0.94)' }}>
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <div style={{ display: 'inline-flex', background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '18px', padding: '16px', marginBottom: '14px', boxShadow: '0 6px 20px rgba(255, 122, 41, 0.35)' }}>
+            <div style={{ display: 'inline-flex', background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '18px', padding: '16px', marginBottom: '14px' }}>
               <Wallet size={32} />
             </div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#2B160E', letterSpacing: '-0.02em' }}>Tamil Pooja Suite</h2>
-            <p style={{ fontSize: '0.85rem', color: '#6E5347', marginTop: '4px', fontWeight: '600' }}>Cloud Personal Finance Portal</p>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#2B160E' }}>Tamil Pooja Suite</h2>
+            <p style={{ fontSize: '0.85rem', color: '#6E5347', fontWeight: '600' }}>Cloud Personal Finance Portal</p>
           </div>
 
           {authError && (
@@ -707,74 +728,95 @@ export default function App() {
           )}
 
           <form onSubmit={handleLoginSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <label style={{ fontSize: '0.75rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>USERNAME</label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <User size={16} color="#6E5347" style={{ position: 'absolute', left: '14px' }} />
-                <input
-                  type="text"
-                  required
-                  autoComplete="off"
-                  placeholder="Enter your username"
-                  value={authUsername}
-                  onChange={(e) => setAuthUsername(e.target.value)}
-                  style={{ paddingLeft: '40px' }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '0.75rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>PASSWORD</label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <Lock size={16} color="#6E5347" style={{ position: 'absolute', left: '14px' }} />
-                <input
-                  type="password"
-                  required
-                  autoComplete="off"
-                  placeholder="Enter your password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  style={{ paddingLeft: '40px' }}
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="btn-primary" style={{ marginTop: '10px', width: '100%', height: '46px', fontSize: '0.95rem' }}>
+            <input
+              type="text"
+              required
+              autoComplete="off"
+              placeholder="Username (tamil / pooja)"
+              value={authUsername}
+              onChange={(e) => setAuthUsername(e.target.value)}
+            />
+            <input
+              type="password"
+              required
+              autoComplete="off"
+              placeholder="Password"
+              value={authPassword}
+              onChange={(e) => setAuthPassword(e.target.value)}
+            />
+            <button type="submit" className="btn-primary" style={{ height: '46px', width: '100%' }}>
               Log In <ArrowRight size={16} />
             </button>
           </form>
 
-          <div style={{ marginTop: '22px', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: '#6E5347', fontSize: '0.75rem', fontWeight: '600' }}>
-            <ShieldCheck size={14} color="#0FA968" /> Protected & Encrypted Cloud Sync
+          <div style={{ marginTop: '22px', textAlign: 'center', color: '#6E5347', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+            <ShieldCheck size={14} color="#0FA968" /> Encrypted Cloud Sync Active
           </div>
         </div>
       </div>
     );
   }
 
-  // --- MAIN APP RENDER (AUTHENTICATED) ---
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: '48px', background: currentView === 'menstrual' ? '#0B0614' : 'transparent', transition: 'background 0.3s ease' }}>
-      {/* HEADER / NAVIGATION */}
-      <nav className="glass-nav" style={{ position: 'sticky', top: 0, zIndex: 100, padding: '14px 24px', background: currentView === 'menstrual' ? 'rgba(11, 6, 20, 0.9)' : undefined, borderColor: currentView === 'menstrual' ? 'rgba(255, 46, 122, 0.3)' : undefined }}>
+    <div style={{ minHeight: '100vh', paddingBottom: '48px', background: pageBackground, transition: 'background 0.3s ease' }}>
+      {/* NAVIGATION */}
+      <nav
+        className="glass-nav"
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          padding: '14px 24px',
+          background: currentView === 'menstrual' ? 'rgba(11, 6, 20, 0.9)' : undefined,
+          borderColor: currentView === 'menstrual' ? 'rgba(255, 46, 122, 0.3)' : undefined
+        }}
+      >
         <div style={{ maxWidth: '1120px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ background: currentView === 'menstrual' ? 'linear-gradient(135deg, #FF2E7A, #9A1750)' : 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', borderRadius: '12px', padding: '10px', display: 'flex', boxShadow: '0 4px 14px rgba(255,46,122,0.3)' }}>
+            <div
+              style={{
+                background: currentView === 'menstrual' ? 'linear-gradient(135deg, #FF2E7A, #9A1750)' : 'linear-gradient(135deg, #FF7A29, #FF3B6E)',
+                color: 'white',
+                borderRadius: '12px',
+                padding: '10px',
+                display: 'flex',
+                boxShadow: '0 4px 14px rgba(255,122,41,0.3)'
+              }}
+            >
               {currentView === 'menstrual' ? <Flame size={20} /> : <Wallet size={20} />}
             </div>
             <div>
-              <h1 style={{ fontWeight: '800', fontSize: '1.2rem', color: currentView === 'menstrual' ? '#ffffff' : '#2B160E', letterSpacing: '-0.02em' }}>
+              <h1
+                style={{
+                  fontWeight: '800',
+                  fontSize: '1.2rem',
+                  color: currentView === 'menstrual' ? '#ffffff' : '#2B160E'
+                }}
+              >
                 Tamil Pooja Suite
               </h1>
-              <span style={{ fontSize: '0.75rem', color: currentView === 'menstrual' ? '#FF2E7A' : '#6E5347', fontWeight: '600' }}>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  color: currentView === 'menstrual' ? '#FF2E7A' : '#6E5347',
+                  fontWeight: '600'
+                }}
+              >
                 {currentView === 'menstrual' ? 'Dark Rose Cycle Tracker' : 'Personal Finance & Chits Suite'}
               </span>
             </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            {/* 4 Clean Navigation Pills */}
-            <div style={{ display: 'flex', background: currentView === 'menstrual' ? 'rgba(28, 14, 42, 0.8)' : 'rgba(255, 255, 255, 0.75)', padding: '4px', borderRadius: '99px', border: currentView === 'menstrual' ? '1px solid rgba(255, 46, 122, 0.3)' : '1px solid var(--line)' }}>
+            <div
+              style={{
+                display: 'flex',
+                background: currentView === 'menstrual' ? 'rgba(28, 14, 42, 0.85)' : 'rgba(255, 255, 255, 0.75)',
+                padding: '4px',
+                borderRadius: '99px',
+                border: currentView === 'menstrual' ? '1px solid rgba(255, 46, 122, 0.3)' : '1px solid var(--line)'
+              }}
+            >
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
                 { id: 'transactions', label: 'Transactions', icon: Receipt },
@@ -803,35 +845,18 @@ export default function App() {
                       color: isActive ? '#ffffff' : currentView === 'menstrual' ? '#94a3b8' : '#6E5347',
                       fontWeight: isActive ? '700' : '600',
                       fontSize: '0.85rem',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: isActive ? '0 4px 14px rgba(255,46,122,0.35)' : 'none'
+                      cursor: 'pointer'
                     }}
                   >
-                    <Icon size={15} />
-                    <span>{tab.label}</span>
+                    <Icon size={15} /> <span>{tab.label}</span>
                   </button>
                 );
               })}
             </div>
 
-            {/* Active User Badge & Logout Button */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span className="user-badge">
-                <User size={13} /> {currentUser}
-              </span>
-              <button
-                onClick={handleLogout}
-                title="Log Out"
-                className="btn-secondary"
-                style={{
-                  height: '36px',
-                  width: '36px',
-                  padding: 0,
-                  borderRadius: '10px',
-                  color: '#ef4444'
-                }}
-              >
+              <span className="user-badge"><User size={13} /> {currentUser}</span>
+              <button onClick={handleLogout} title="Log Out" className="btn-secondary" style={{ height: '36px', width: '36px', padding: 0, borderRadius: '10px', color: '#ef4444' }}>
                 <LogOut size={16} />
               </button>
             </div>
@@ -843,10 +868,7 @@ export default function App() {
       <main style={{ maxWidth: '1120px', margin: '28px auto 0', padding: '0 16px' }}>
         {isLoading ? (
           <div style={{ padding: '80px 0', textAlign: 'center', color: '#FF7A29' }}>
-            <div style={{ display: 'inline-block', padding: '16px', borderRadius: '50%', background: 'rgba(255,122,41,0.12)', marginBottom: '12px' }}>
-              <Wallet size={32} />
-            </div>
-            <p style={{ fontWeight: '700', fontSize: '1.05rem', color: currentView === 'menstrual' ? '#ffffff' : '#2B160E' }}>Loading data...</p>
+            <p style={{ fontWeight: '700' }}>Loading data...</p>
           </div>
         ) : (
           <>
@@ -854,7 +876,7 @@ export default function App() {
             {currentView === 'dashboard' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 
-                {/* PROMINENT HERO ACTION BAR */}
+                {/* HERO ACTION BAR WITH ADD EXPENSE BUTTON & DAILY PACE */}
                 <div
                   className="glass-card"
                   style={{
@@ -863,34 +885,36 @@ export default function App() {
                     justifyContent: 'space-between',
                     flexWrap: 'wrap',
                     gap: '16px',
-                    padding: '18px 24px',
-                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 239, 214, 0.75))',
+                    padding: '20px 24px',
+                    background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 239, 214, 0.8))',
                     border: '1.5px solid rgba(255, 122, 41, 0.3)',
                     boxShadow: '0 8px 30px rgba(255, 122, 41, 0.12)'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', padding: '12px', borderRadius: '16px', display: 'flex', boxShadow: '0 4px 14px rgba(255,122,41,0.3)' }}>
-                      <Sparkles size={24} />
+                    <div style={{ background: 'linear-gradient(135deg, #FF7A29, #FF3B6E)', color: 'white', padding: '14px', borderRadius: '18px', display: 'flex' }}>
+                      <Sparkles size={26} />
                     </div>
                     <div>
-                      <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#2B160E', letterSpacing: '-0.01em' }}>
+                      <h2 style={{ fontSize: '1.35rem', fontWeight: '800', color: '#2B160E', letterSpacing: '-0.01em' }}>
                         Welcome back, {currentUser}!
                       </h2>
-                      <span style={{ fontSize: '0.8rem', color: '#6E5347', fontWeight: '500' }}>
-                        Active overview for {formatMonthLabel(currentMonthKey)}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '3px', flexWrap: 'wrap', fontSize: '0.8rem', color: '#6E5347' }}>
+                        <span>Daily Pace: <strong>{formatCurrency(dailyAverageSpend)} / day</strong></span>
+                      </div>
                     </div>
                   </div>
 
+                  {/* ADD NEW EXPENSE HERO BUTTON */}
                   <button className="btn-glossy-hero" onClick={() => setIsAddExpenseOpen(true)}>
                     <Plus size={18} /> Add New Expense
                   </button>
                 </div>
 
-                {/* 3 CORE DASHBOARD METRIC CARDS */}
-                <div className="grid-3">
-                  {/* CARD 1: TOTAL SPENT */}
+                {/* 4 CORE DASHBOARD KPI CARDS (DIRECTLY BELOW HERO) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '20px' }}>
+                  
+                  {/* CARD 1: TOTAL SPENT (CURRENT MONTH) */}
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -900,15 +924,15 @@ export default function App() {
                         <TrendingDown size={18} />
                       </div>
                     </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#2B160E', marginTop: '12px', letterSpacing: '-0.02em' }}>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#2B160E', marginTop: '12px' }}>
                       {formatCurrency(currentMonthExpensesTotal)}
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block', fontWeight: '500' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
                       Total spend in {formatMonthLabel(currentMonthKey)}
                     </span>
                   </div>
 
-                  {/* CARD 2: TOTAL LOGGED EXPENSES */}
+                  {/* CARD 2: LOGGED EXPENSES COUNT */}
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -918,15 +942,15 @@ export default function App() {
                         <Receipt size={18} />
                       </div>
                     </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#2B160E', marginTop: '12px', letterSpacing: '-0.02em' }}>
-                      {currentMonthExpensesCount} <span style={{ fontSize: '1rem', fontWeight: '600', color: '#6E5347' }}>Entries</span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#2B160E', marginTop: '12px' }}>
+                      {currentMonthExpensesCount} <span style={{ fontSize: '1rem', color: '#6E5347' }}>Entries</span>
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block', fontWeight: '500' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
                       Recorded transactions this month
                     </span>
                   </div>
 
-                  {/* CARD 3: NUMBER OF DAYS WITH NO EXPENSES */}
+                  {/* CARD 3: NO-EXPENSE DAYS */}
                   <div className="glass-card">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -936,357 +960,401 @@ export default function App() {
                         <Award size={18} />
                       </div>
                     </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#0FA968', marginTop: '12px', letterSpacing: '-0.02em' }}>
-                      {noExpenseDaysCount} <span style={{ fontSize: '1rem', fontWeight: '600', color: '#0FA968' }}>Days Clean</span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#0FA968', marginTop: '12px' }}>
+                      {noExpenseDaysCount} <span style={{ fontSize: '1rem' }}>Days Clean</span>
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block', fontWeight: '500' }}>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
                       Zero-spend days saved this month
                     </span>
                   </div>
+
+                  {/* CARD 4: TOTAL SPENT TODAY */}
+                  <div className="glass-card" style={{ border: todaySpentTotal > 0 ? '1.5px solid rgba(255, 122, 41, 0.4)' : undefined }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        SPENT TODAY
+                      </span>
+                      <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(255, 122, 41, 0.15)', color: '#FF7A29' }}>
+                        <Clock size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: todaySpentTotal > 0 ? '#E85D04' : '#0FA968', marginTop: '12px' }}>
+                      {formatCurrency(todaySpentTotal)}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
+                      {todayExpensesCount > 0 ? `${todayExpensesCount} transaction${todayExpensesCount === 1 ? '' : 's'} logged today` : '₹0 spent so far today'}
+                    </span>
+                  </div>
+
                 </div>
 
                 {/* CHARTS ROW */}
                 <div className="grid-2">
                   <div className="glass-card">
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2B160E', marginBottom: '20px' }}>
-                      Monthly Spending Trend
-                    </h3>
-                    {monthlyTrendData.every((d) => d.amount === 0) ? (
-                      <div style={{ height: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#6E5347' }}>
-                        <AlertCircle size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <p style={{ fontSize: '0.9rem' }}>No spending data for the last 6 months</p>
-                      </div>
-                    ) : (
-                      <div style={{ width: '100%', height: '220px' }}>
-                        <ResponsiveContainer>
-                          <AreaChart data={monthlyTrendData}>
-                            <defs>
-                              <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#FF7A29" stopOpacity={0.4} />
-                                <stop offset="95%" stopColor="#FF3B6E" stopOpacity={0.0} />
-                              </linearGradient>
-                            </defs>
-                            <XAxis dataKey="month" stroke="#6E5347" fontSize={12} tickLine={false} />
-                            <YAxis stroke="#6E5347" fontSize={12} tickLine={false} />
-                            <Tooltip formatter={(value) => formatCurrency(value)} />
-                            <Area type="monotone" dataKey="amount" stroke="#FF7A29" strokeWidth={2.5} fillOpacity={1} fill="url(#trendGradient)" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2B160E', marginBottom: '20px' }}>Monthly Spending Trend</h3>
+                    <div style={{ width: '100%', height: '220px' }}>
+                      <ResponsiveContainer>
+                        <AreaChart data={monthlyTrendData}>
+                          <defs>
+                            <linearGradient id="trendGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#FF7A29" stopOpacity={0.4} />
+                              <stop offset="95%" stopColor="#FF3B6E" stopOpacity={0.0} />
+                            </linearGradient>
+                          </defs>
+                          <XAxis dataKey="month" stroke="#6E5347" fontSize={12} tickLine={false} />
+                          <YAxis stroke="#6E5347" fontSize={12} tickLine={false} />
+                          <Tooltip formatter={(value) => formatCurrency(value)} />
+                          <Area type="monotone" dataKey="amount" stroke="#FF7A29" strokeWidth={2.5} fillOpacity={1} fill="url(#trendGradient)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
 
                   <div className="glass-card">
                     <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2B160E', marginBottom: '20px' }}>
                       Category Breakdown ({formatMonthLabel(currentMonthKey)})
                     </h3>
-                    {categoryBreakdownData.length === 0 ? (
-                      <div style={{ height: '220px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#6E5347' }}>
-                        <AlertCircle size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <p style={{ fontSize: '0.9rem' }}>No expenses logged this month</p>
+                    <div style={{ display: 'flex', alignItems: 'center', height: '220px' }}>
+                      <div style={{ width: '50%', height: '100%' }}>
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Pie data={categoryBreakdownData} innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                              {categoryBreakdownData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                            </Pie>
+                            <Tooltip formatter={(val) => formatCurrency(val)} />
+                          </PieChart>
+                        </ResponsiveContainer>
                       </div>
-                    ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', height: '220px' }}>
-                        <div style={{ width: '50%', height: '100%' }}>
-                          <ResponsiveContainer>
-                            <PieChart>
-                              <Pie data={categoryBreakdownData} innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
-                                {categoryBreakdownData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={entry.color} />
-                                ))}
-                              </Pie>
-                              <Tooltip formatter={(val) => formatCurrency(val)} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
-                        <div style={{ width: '50%', maxHeight: '180px', overflowY: 'auto', paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {categoryBreakdownData.map((item, idx) => (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
-                                <span style={{ color: '#2B160E', fontWeight: '600' }}>{item.name}</span>
-                              </div>
-                              <span style={{ fontWeight: '800', color: '#2B160E' }}>{formatCurrency(item.value)}</span>
+                      <div style={{ width: '50%', maxHeight: '180px', overflowY: 'auto', paddingLeft: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {categoryBreakdownData.map((item, idx) => (
+                          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
+                              <span style={{ color: '#2B160E', fontWeight: '600' }}>{item.name}</span>
                             </div>
-                          ))}
-                        </div>
+                            <span style={{ fontWeight: '800', color: '#2B160E' }}>{formatCurrency(item.value)}</span>
+                          </div>
+                        ))}
                       </div>
-                    )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* HISTORICAL PEAK BENCHMARKS & CATEGORY HEADROOM RADAR */}
+                <div className="glass-card" style={{ padding: '24px', border: '1.5px solid rgba(212, 160, 23, 0.3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#FF7A29', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'rgba(255, 122, 41, 0.12)', padding: '3px 10px', borderRadius: '6px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <TrendingUp size={13} /> CATEGORY BENCHMARK MATRIX
+                      </span>
+                      <h3 style={{ fontSize: '1.25rem', fontWeight: '800', color: '#2B160E', marginTop: '6px' }}>
+                        Historical Peak Spending vs. This Month
+                      </h3>
+                      <p style={{ fontSize: '0.8rem', color: '#6E5347', marginTop: '2px' }}>
+                        Tracks your all-time record spend for each category and measures your current month headroom
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6E5347', background: '#FAF6EE', padding: '6px 12px', borderRadius: '10px', border: '1px solid var(--line)' }}>
+                        Current Month: <strong>{formatMonthLabel(currentMonthKey)}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+                    {allTimeCategoryPeaks.map((cat) => {
+                      const IconComponent = ICON_MAP[cat.icon] || MoreHorizontal;
+                      return (
+                        <div
+                          key={cat.id}
+                          style={{
+                            padding: '16px 18px',
+                            background: '#ffffff',
+                            borderRadius: '16px',
+                            border: cat.isCurrentMonthPeak
+                              ? '1.5px solid #FF3B6E'
+                              : cat.pctOfPeak >= 75
+                              ? '1.5px solid #FFCB4D'
+                              : '1px solid var(--line)',
+                            boxShadow: '0 4px 14px rgba(43, 22, 14, 0.03)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '12px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ background: cat.color + '18', color: cat.color, padding: '8px', borderRadius: '10px', display: 'flex' }}>
+                                <IconComponent size={18} />
+                              </div>
+                              <div>
+                                <span style={{ fontWeight: '800', color: '#2B160E', fontSize: '0.95rem' }}>{cat.name}</span>
+                              </div>
+                            </div>
+
+                            {cat.isCurrentMonthPeak ? (
+                              <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#ffffff', background: 'linear-gradient(135deg, #FF3B6E, #C4114A)', padding: '3px 8px', borderRadius: '99px' }}>
+                                🔥 Record High Month!
+                              </span>
+                            ) : cat.pctOfPeak >= 75 ? (
+                              <span style={{ fontSize: '0.7rem', fontWeight: '800', color: '#b45309', background: '#fef3c7', padding: '3px 8px', borderRadius: '99px' }}>
+                                ⚠️ {cat.pctOfPeak}% of Record
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.7rem', fontWeight: '700', color: '#0FA968', background: '#ecfdf5', padding: '3px 8px', borderRadius: '99px' }}>
+                                ✅ {cat.pctOfPeak}% of Record
+                              </span>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', padding: '10px 12px', background: '#FAF6EE', borderRadius: '12px', border: '1px solid rgba(212, 160, 23, 0.15)' }}>
+                            <div>
+                              <span style={{ fontSize: '0.68rem', color: '#6E5347', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>ALL-TIME PEAK</span>
+                              <strong style={{ fontSize: '1.05rem', color: '#2B160E', fontWeight: '800', marginTop: '2px', display: 'block' }}>
+                                {formatCurrency(cat.peakAmount)}
+                              </strong>
+                              <span style={{ fontSize: '0.7rem', color: '#E85D04', fontWeight: '600' }}>Month: {cat.peakMonth}</span>
+                            </div>
+
+                            <div style={{ textAlign: 'right' }}>
+                              <span style={{ fontSize: '0.68rem', color: '#6E5347', fontWeight: '700', textTransform: 'uppercase', display: 'block' }}>THIS MONTH SPENT</span>
+                              <strong style={{ fontSize: '1.05rem', color: cat.isCurrentMonthPeak ? '#FF3B6E' : '#2B160E', fontWeight: '800', marginTop: '2px', display: 'block' }}>
+                                {formatCurrency(cat.currentMonthSpend)}
+                              </strong>
+                              <span style={{ fontSize: '0.7rem', color: '#6E5347' }}>
+                                {cat.headroom > 0 ? `${formatCurrency(cat.headroom)} under peak` : 'At Peak'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#6E5347', marginBottom: '5px' }}>
+                              <span>Month Usage vs Record</span>
+                              <strong style={{ color: '#2B160E' }}>{cat.pctOfPeak}%</strong>
+                            </div>
+                            <div style={{ height: '7px', width: '100%', background: 'rgba(212, 160, 23, 0.18)', borderRadius: '99px', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  height: '100%',
+                                  width: `${cat.pctOfPeak}%`,
+                                  background: getProgressBarGradient(cat.pctOfPeak),
+                                  borderRadius: '99px',
+                                  transition: 'width 0.3s ease'
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* RECENT TRANSACTIONS CONTAINER */}
                 <div className="glass-card">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
-                    <div>
-                      <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2B160E' }}>Recent Transactions</h3>
-                      <p style={{ fontSize: '0.78rem', color: '#6E5347' }}>Latest entries logged by Tamil and Pooja</p>
-                    </div>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: '800', color: '#2B160E' }}>Recent Transactions</h3>
                     <button className="btn-secondary" style={{ height: '34px', fontSize: '0.8rem' }} onClick={() => setCurrentView('transactions')}>
                       View All <ArrowRight size={14} />
                     </button>
                   </div>
-
-                  {recentExpenses.length === 0 ? (
-                    <div style={{ padding: '40px 0', textAlign: 'center', color: '#6E5347' }}>
-                      <Receipt size={32} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                      <p style={{ fontSize: '0.9rem' }}>No expenses recorded yet.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
-                      {recentExpenses.map((e) => {
-                        const cat = categories.find((c) => c.id === e.category_id);
-                        return (
-                          <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#ffffff', borderRadius: '14px', border: '1px solid var(--line)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: cat ? cat.color : '#6E5347', flexShrink: 0 }} />
-                              <div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#2B160E' }}>{e.description}</div>
-                                <div style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '2px' }}>
-                                  {cat ? cat.name : 'Other'} • {e.expense_date} • <span className="user-badge" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>{e.added_by || currentUser}</span>
-                                </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '12px' }}>
+                    {recentExpenses.map((e) => {
+                      const cat = categories.find((c) => c.id === e.category_id);
+                      return (
+                        <div key={e.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: '#ffffff', borderRadius: '14px', border: '1px solid var(--line)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: cat ? cat.color : '#6E5347' }} />
+                            <div>
+                              <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#2B160E' }}>{e.description}</div>
+                              <div style={{ fontSize: '0.78rem', color: '#6E5347' }}>
+                                {cat ? cat.name : 'Other'} • {e.expense_date} • <span className="user-badge" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>{e.added_by || currentUser}</span>
                               </div>
                             </div>
-                            <div style={{ fontWeight: '800', color: '#FF3B6E', fontSize: '0.95rem' }}>-{formatCurrency(e.amount)}</div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          <div style={{ fontWeight: '800', color: '#FF3B6E', fontSize: '0.95rem' }}>-{formatCurrency(e.amount)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
+
               </div>
             )}
 
-            {/* VIEW 2: TRANSACTIONS (WITH CONDITIONAL PREVIOUS MONTH CATEGORY BREAKDOWN) */}
+            {/* VIEW 2: TRANSACTIONS */}
             {currentView === 'transactions' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
                     <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#2B160E' }}>Transactions</h2>
-                    <p style={{ fontSize: '0.8rem', color: '#6E5347', marginTop: '2px' }}>
-                      Viewing records for {formatMonthLabel(selectedMonth)}
-                    </p>
+                    <p style={{ fontSize: '0.8rem', color: '#6E5347' }}>Records for {formatMonthLabel(selectedMonth)}</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <button className="btn-pdf" onClick={handleExportPDF}>
-                      <FileText size={16} /> Export PDF
-                    </button>
-                    <button className="btn-primary" onClick={() => setIsAddExpenseOpen(true)}>
-                      <Plus size={16} /> Add Expense
-                    </button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button className="btn-pdf" onClick={handleExportPDF}><FileText size={16} /> Export PDF</button>
+                    <button className="btn-primary" onClick={() => setIsAddExpenseOpen(true)}><Plus size={16} /> Add Expense</button>
                   </div>
                 </div>
 
-                {/* FILTER CONTROLS BAR */}
                 <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', alignItems: 'end' }}>
                   <div>
                     <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SEARCH KEYWORD</label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <Search size={16} color="#6E5347" style={{ position: 'absolute', left: '12px' }} />
-                      <input
-                        type="text"
-                        placeholder="Filter e.g. flower, petrol, Tamil..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        style={{ paddingLeft: '36px', paddingRight: '32px' }}
-                      />
-                      {searchQuery && (
-                        <button onClick={() => setSearchQuery('')} style={{ position: 'absolute', right: '10px', background: 'none', border: 'none', color: '#6E5347', cursor: 'pointer' }}>
-                          <X size={14} />
-                        </button>
-                      )}
-                    </div>
+                    <input type="text" placeholder="Filter descriptions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                   </div>
-
                   <div>
                     <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>CATEGORY</label>
                     <select value={selectedCategoryFilter} onChange={(e) => setSelectedCategoryFilter(e.target.value)}>
                       <option value="ALL">All Categories</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
-
                   <div>
                     <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTH SELECTOR</label>
                     <input type="month" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} />
                   </div>
                 </div>
 
-                {/* ⭐ PREVIOUS MONTH CATEGORY BREAKDOWN SECTION (Shown ONLY for previous months) */}
                 {isPreviousMonthSelected && (
                   <div className="glass-card" style={{ padding: '20px 24px', border: '1.5px solid rgba(255, 122, 41, 0.35)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
                       <div>
-                        <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                          HISTORICAL SUMMARY
-                        </span>
-                        <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#2B160E', marginTop: '2px' }}>
-                          {formatMonthLabel(selectedMonth)} — Category Wise Total
-                        </h3>
+                        <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', textTransform: 'uppercase' }}>HISTORICAL SUMMARY</span>
+                        <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#2B160E', marginTop: '2px' }}>{formatMonthLabel(selectedMonth)} — Category Breakdown</h3>
                       </div>
-                      <div style={{ background: 'rgba(255, 122, 41, 0.12)', border: '1px solid rgba(255, 122, 41, 0.3)', padding: '6px 16px', borderRadius: '12px', textAlign: 'right' }}>
+                      <div style={{ background: 'rgba(255,122,41,0.12)', border: '1px solid rgba(255,122,41,0.3)', padding: '6px 16px', borderRadius: '12px', textAlign: 'right' }}>
                         <span style={{ fontSize: '0.7rem', color: '#6E5347', display: 'block', fontWeight: '700' }}>MONTH TOTAL SPENT</span>
-                        <strong style={{ fontSize: '1.15rem', color: '#E85D04', fontWeight: '800' }}>
-                          {formatCurrency(selectedMonthTotalSpend)}
-                        </strong>
+                        <strong style={{ fontSize: '1.15rem', color: '#E85D04', fontWeight: '800' }}>{formatCurrency(selectedMonthTotalSpend)}</strong>
                       </div>
                     </div>
-
-                    {selectedMonthCategorySpend.length === 0 ? (
-                      <p style={{ fontSize: '0.88rem', color: '#6E5347', fontStyle: 'italic' }}>
-                        No expenses were logged in {formatMonthLabel(selectedMonth)}.
-                      </p>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-                        {selectedMonthCategorySpend.map((cat) => {
-                          const IconComponent = ICON_MAP[cat.icon] || MoreHorizontal;
-                          const percentage = selectedMonthTotalSpend > 0 ? Math.round((cat.total / selectedMonthTotalSpend) * 100) : 0;
-                          return (
-                            <div
-                              key={cat.id}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '12px 14px',
-                                background: '#ffffff',
-                                borderRadius: '14px',
-                                border: '1px solid var(--line)',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{ background: cat.color + '18', color: cat.color, padding: '8px', borderRadius: '10px', display: 'flex' }}>
-                                  <IconComponent size={16} />
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#2B160E' }}>{cat.name}</div>
-                                  <div style={{ fontSize: '0.72rem', color: '#6E5347' }}>
-                                    {cat.count} {cat.count === 1 ? 'entry' : 'entries'} ({percentage}%)
-                                  </div>
-                                </div>
-                              </div>
-                              <div style={{ fontWeight: '800', color: '#2B160E', fontSize: '0.95rem' }}>
-                                {formatCurrency(cat.total)}
-                              </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+                      {selectedMonthCategorySpend.map((cat) => {
+                        const IconComponent = ICON_MAP[cat.icon] || MoreHorizontal;
+                        const percentage = selectedMonthTotalSpend > 0 ? Math.round((cat.total / selectedMonthTotalSpend) * 100) : 0;
+                        return (
+                          <div key={cat.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: '#ffffff', borderRadius: '14px', border: '1px solid var(--line)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div style={{ background: cat.color + '18', color: cat.color, padding: '8px', borderRadius: '10px' }}><IconComponent size={16} /></div>
+                              <div><div style={{ fontSize: '0.88rem', fontWeight: '700', color: '#2B160E' }}>{cat.name}</div><div style={{ fontSize: '0.72rem', color: '#6E5347' }}>{cat.count} entries ({percentage}%)</div></div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* SEARCH MATCH BANNER */}
-                {searchQuery.trim() !== '' && (
-                  <div className="glass-card" style={{ background: 'rgba(255, 122, 41, 0.1)', border: '1px solid rgba(255, 122, 41, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', padding: '16px 20px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{ background: '#FF7A29', color: 'white', borderRadius: '50%', padding: '6px', display: 'flex' }}><Search size={16} /></div>
-                      <span style={{ fontSize: '0.92rem', color: '#2B160E' }}>
-                        Found <strong>{filteredExpenses.length}</strong> transaction{filteredExpenses.length === 1 ? '' : 's'} matching <strong style={{ color: '#E8600F' }}>"{searchQuery}"</strong>
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: '800', color: '#E8600F' }}>
-                      Total: {formatCurrency(searchTotalAmount)}
+                            <div style={{ fontWeight: '800', color: '#2B160E', fontSize: '0.95rem' }}>{formatCurrency(cat.total)}</div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* ITEMIZED TRANSACTIONS TABLE */}
                 <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
                   <div className="table-container">
-                    {filteredExpenses.length === 0 ? (
-                      <div style={{ padding: '50px 20px', textAlign: 'center', color: '#6E5347' }}>
-                        <AlertCircle size={36} style={{ marginBottom: '8px', opacity: 0.5 }} />
-                        <p style={{ fontSize: '0.92rem' }}>
-                          {searchQuery ? `No transactions match "${searchQuery}".` : 'No transactions found for selected filters.'}
-                        </p>
-                      </div>
-                    ) : (
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>Description</th>
-                            <th>Category</th>
-                            <th>Added By</th>
-                            <th>Date</th>
-                            <th>Amount</th>
-                            <th style={{ textAlign: 'right' }}>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredExpenses.map((exp) => {
-                            const cat = categories.find((c) => c.id === exp.category_id);
-                            return (
-                              <tr key={exp.id}>
-                                <td style={{ fontWeight: '700', color: '#2B160E' }}>{exp.description}</td>
-                                <td>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cat ? cat.color : '#6E5347' }} />
-                                    {cat ? cat.name : 'Other'}
-                                  </div>
-                                </td>
-                                <td>
-                                  <span className="user-badge">
-                                    <User size={12} /> {exp.added_by || currentUser}
-                                  </span>
-                                </td>
-                                <td style={{ color: '#6E5347' }}>{exp.expense_date}</td>
-                                <td style={{ color: '#FF3B6E', fontWeight: '800' }}>-{formatCurrency(exp.amount)}</td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <button
-                                    onClick={() => setDeleteTargetId(exp.id)}
-                                    style={{ background: '#fef2f2', color: '#FF3B6E', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
+                    <table>
+                      <thead><tr><th>Description</th><th>Category</th><th>Added By</th><th>Date</th><th>Amount</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
+                      <tbody>
+                        {filteredExpenses.map((exp) => {
+                          const cat = categories.find((c) => c.id === exp.category_id);
+                          return (
+                            <tr key={exp.id}>
+                              <td style={{ fontWeight: '700', color: '#2B160E' }}>{exp.description}</td>
+                              <td><div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cat ? cat.color : '#6E5347' }} />{cat ? cat.name : 'Other'}</div></td>
+                              <td><span className="user-badge"><User size={12} /> {exp.added_by || currentUser}</span></td>
+                              <td style={{ color: '#6E5347' }}>{exp.expense_date}</td>
+                              <td style={{ color: '#FF3B6E', fontWeight: '800' }}>-{formatCurrency(exp.amount)}</td>
+                              <td style={{ textAlign: 'right' }}>
+                                <button onClick={() => setDeleteTargetId(exp.id)} style={{ background: '#fef2f2', color: '#FF3B6E', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* VIEW 3: LOANS & CHIT FUNDS */}
+            {/* VIEW 3: LOANS & CHITS (CLEAN PORCELAIN & GOLD GLASSMORPHISM) */}
             {currentView === 'loans' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+                
+                {/* HEADER ROW */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div>
-                    <h2 style={{ fontSize: '1.3rem', fontWeight: '800', color: '#2B160E' }}>Loans & Chit Funds</h2>
-                    <p style={{ fontSize: '0.8rem', color: '#6E5347', marginTop: '2px' }}>Track monthly chit fund variable payments, dividends & loan repayments</p>
+                    <h2 style={{ fontSize: '1.35rem', fontWeight: '800', color: '#2B160E', letterSpacing: '-0.01em' }}>
+                      Loans & Chit Funds
+                    </h2>
+                    <p style={{ fontSize: '0.8rem', color: '#6E5347', marginTop: '2px' }}>
+                      Track monthly variable payments, dividend gains & loan repayments
+                    </p>
                   </div>
                   <button className="btn-primary" onClick={() => setIsAddSchemeOpen(true)}>
                     <Plus size={16} /> Add Chit / Loan
                   </button>
                 </div>
 
-                <div className="grid-3">
+                {/* 4 KPI CARDS (LIGHT WHITE GLASS) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '20px' }}>
+                  
                   <div className="glass-card">
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6E5347', letterSpacing: '0.05em' }}>ACTIVE SCHEMES</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#2B160E', marginTop: '10px' }}>
-                      {schemes.length} Active
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        ACTIVE SCHEMES
+                      </span>
+                      <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(255, 122, 41, 0.15)', color: '#FF7A29' }}>
+                        <Landmark size={18} />
+                      </div>
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>Chits & Loans enrolled</span>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#2B160E', marginTop: '12px' }}>
+                      {schemes.length} <span style={{ fontSize: '1rem', color: '#6E5347', fontWeight: '600' }}>Active</span>
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
+                      Chits & Loans enrolled
+                    </span>
                   </div>
 
                   <div className="glass-card">
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6E5347', letterSpacing: '0.05em' }}>TOTAL TARGET VALUE</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#FF7A29', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        TOTAL TARGET VALUE
+                      </span>
+                      <div style={{ padding: '8px', borderRadius: '10px', background: 'rgba(212, 160, 23, 0.15)', color: '#D4A017' }}>
+                        <Coins size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#FF7A29', marginTop: '12px' }}>
                       {formatCurrency(schemes.reduce((acc, s) => acc + Number(s.total_target_amount), 0))}
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>Nominal scheme value</span>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
+                      Cumulative nominal target
+                    </span>
                   </div>
 
                   <div className="glass-card">
-                    <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#6E5347', letterSpacing: '0.05em' }}>TOTAL DIVIDEND SAVED</span>
-                    <div style={{ fontSize: '1.75rem', fontWeight: '800', color: '#0FA968', marginTop: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#6E5347', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        ACTUAL CASH PAID
+                      </span>
+                      <div style={{ padding: '8px', borderRadius: '10px', background: '#fef2f2', color: '#FF3B6E' }}>
+                        <TrendingDown size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#FF3B6E', marginTop: '12px' }}>
+                      {formatCurrency(installments.reduce((acc, i) => acc + Number(i.amount_paid || 0), 0))}
+                    </div>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
+                      Total money contributed
+                    </span>
+                  </div>
+
+                  <div className="glass-card" style={{ border: '1.5px solid rgba(16, 185, 129, 0.35)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: '#0FA968', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        TOTAL DIVIDEND SAVED
+                      </span>
+                      <div style={{ padding: '8px', borderRadius: '10px', background: '#ecfdf5', color: '#0FA968' }}>
+                        <Award size={18} />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '1.85rem', fontWeight: '800', color: '#0FA968', marginTop: '12px' }}>
                       {formatCurrency(
                         installments.reduce((acc, i) => {
                           const sch = schemes.find((s) => s.id === i.scheme_id);
@@ -1297,14 +1365,20 @@ export default function App() {
                         }, 0)
                       )}
                     </div>
-                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>Chit auction discounts</span>
+                    <span style={{ fontSize: '0.78rem', color: '#6E5347', marginTop: '4px', display: 'block' }}>
+                      Auction discounts earned
+                    </span>
                   </div>
+
                 </div>
 
+                {/* SCHEMES CONTAINER */}
                 {schemes.length === 0 ? (
                   <div className="glass-card" style={{ padding: '60px 20px', textAlign: 'center', color: '#6E5347' }}>
                     <Landmark size={40} style={{ marginBottom: '12px', opacity: 0.4 }} />
-                    <p style={{ fontSize: '0.95rem' }}>No Chit Funds or Loans enrolled yet. Click <strong>+ Add Chit / Loan</strong> above to set up your first scheme.</p>
+                    <p style={{ fontSize: '0.95rem' }}>
+                      No Chit Funds or Loans enrolled yet. Click <strong>+ Add Chit / Loan</strong> above to set up your first scheme.
+                    </p>
                   </div>
                 ) : (
                   <div className="grid-2">
@@ -1312,25 +1386,32 @@ export default function App() {
                       const schInsts = installments.filter((i) => i.scheme_id === sch.id);
                       const paidInsts = schInsts.filter((i) => i.status === 'Paid');
                       const totalCashPaid = schInsts.reduce((acc, i) => acc + Number(i.amount_paid || 0), 0);
-                      
                       const totalDividendSaved = schInsts.reduce((acc, i) => {
                         if (i.status !== 'Paid') return acc;
                         const base = Number(sch.monthly_amount);
                         const paid = Number(i.amount_paid);
                         return acc + (base > paid ? base - paid : 0);
                       }, 0);
-
                       const progressPct = Math.round((paidInsts.length / sch.total_months) * 100) || 0;
                       const isSelected = selectedSchemeId === sch.id;
 
                       return (
-                        <div key={sch.id} className="glass-card" style={{ borderColor: isSelected ? '#FF7A29' : undefined, borderWidth: isSelected ? '2px' : '1px' }}>
+                        <div
+                          key={sch.id}
+                          className="glass-card"
+                          style={{
+                            borderColor: isSelected ? '#FF7A29' : undefined,
+                            borderWidth: isSelected ? '2px' : '1px'
+                          }}
+                        >
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                             <div>
                               <span style={{ fontSize: '0.72rem', fontWeight: '800', color: '#FF7A29', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'rgba(255,122,41,0.12)', padding: '2px 8px', borderRadius: '6px' }}>
                                 {sch.type}
                               </span>
-                              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#2B160E', marginTop: '6px' }}>{sch.title}</h3>
+                              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', color: '#2B160E', marginTop: '6px' }}>
+                                {sch.title}
+                              </h3>
                             </div>
 
                             <div style={{ display: 'flex', gap: '6px' }}>
@@ -1370,9 +1451,9 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* PER-SCHEME DIVIDEND SAVED OVERVIEW BANNER */}
+                          {/* DIVIDEND SAVED BADGE */}
                           {sch.type === 'Chit Fund' && (
-                            <div style={{ background: 'rgba(15, 169, 104, 0.1)', border: '1px solid rgba(15, 169, 104, 0.25)', padding: '8px 12px', borderRadius: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 12px', borderRadius: '10px', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontSize: '0.78rem', color: '#0FA968', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 <Coins size={14} /> Dividend Saved So Far
                               </span>
@@ -1382,7 +1463,7 @@ export default function App() {
                             </div>
                           )}
 
-                          {/* GREEN-TO-RED DYNAMIC PROGRESS BAR */}
+                          {/* PROGRESS BAR */}
                           <div style={{ height: '8px', width: '100%', background: 'var(--line)', borderRadius: '99px', overflow: 'hidden', marginBottom: '16px' }}>
                             <div style={{ height: '100%', width: `${progressPct}%`, background: getProgressBarGradient(progressPct), borderRadius: '99px', transition: 'width 0.3s ease' }} />
                           </div>
@@ -1406,6 +1487,7 @@ export default function App() {
                   </div>
                 )}
 
+                {/* EXPANDED SCHEDULE TABLE (CLEAN WHITE GLASSMORPHISM) */}
                 {selectedSchemeId && (() => {
                   const sch = schemes.find((s) => s.id === selectedSchemeId);
                   if (!sch) return null;
@@ -1542,6 +1624,7 @@ export default function App() {
                     </div>
                   );
                 })()}
+
               </div>
             )}
 
@@ -1550,144 +1633,41 @@ export default function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
                 <div className="grid-3">
                   <div className="dark-glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>AVG FLOW DURATION</span>
-                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2E7A' }}>
-                        <Clock size={18} />
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>
-                      {avgCycleDays > 0 ? `${avgCycleDays} Days` : 'No Data'}
-                    </div>
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Average period length</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>AVG FLOW DURATION</span><Clock size={18} color="#FF2E7A" /></div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>{avgCycleDays > 0 ? `${avgCycleDays} Days` : 'No Data'}</div>
                   </div>
-
                   <div className="dark-glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>TOTAL LOGGED CYCLES</span>
-                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2E7A' }}>
-                        <Flame size={18} />
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>
-                      {cycles.length}
-                    </div>
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Saved monthly cycles</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>TOTAL LOGGED CYCLES</span><Flame size={18} color="#FF2E7A" /></div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: '800', color: '#ffffff', marginTop: '12px' }}>{cycles.length}</div>
                   </div>
-
                   <div className="dark-glass-card">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.05em' }}>LAST RECORDED PERIOD</span>
-                      <div style={{ padding: '6px', borderRadius: '8px', background: 'rgba(255, 42, 109, 0.15)', color: '#FF2E7A' }}>
-                        <Sparkles size={18} />
-                      </div>
-                    </div>
-                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FF2E7A', marginTop: '14px' }}>
-                      {cycles.length > 0 ? formatDateFormatted(cycles[0].start_date) : 'None Yet'}
-                    </div>
-                    <span style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'block' }}>Start date of recent period</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ fontSize: '0.75rem', fontWeight: '700', color: '#94a3b8' }}>LAST RECORDED PERIOD</span><Sparkles size={18} color="#FF2E7A" /></div>
+                    <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FF2E7A', marginTop: '14px' }}>{cycles.length > 0 ? formatDateFormatted(cycles[0].start_date) : 'None Yet'}</div>
                   </div>
                 </div>
 
                 <div className="dark-glass-card" style={{ border: '1px solid rgba(255, 42, 109, 0.4)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-                    <div style={{ background: 'linear-gradient(135deg, #FF2E7A, #9A1750)', padding: '8px', borderRadius: '10px', color: 'white' }}>
-                      <HeartPulse size={20} />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff' }}>Log Period Cycle</h3>
-                      <p style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Select start date and end date of your cycle</p>
-                    </div>
-                  </div>
-
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#ffffff', marginBottom: '16px' }}>Log Period Cycle</h3>
                   <form onSubmit={handleAddCycle} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '20px', alignItems: 'end' }}>
-                    <div>
-                      <label style={{ fontSize: '0.78rem', color: '#FF2E7A', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
-                      <input
-                        type="date"
-                        required
-                        className="dark-input"
-                        value={cycleForm.start_date}
-                        onChange={(e) => setCycleForm({ ...cycleForm, start_date: e.target.value })}
-                      />
-                    </div>
-
-                    <div>
-                      <label style={{ fontSize: '0.78rem', color: '#FF2E7A', fontWeight: '700', display: 'block', marginBottom: '6px' }}>END DATE</label>
-                      <input
-                        type="date"
-                        required
-                        className="dark-input"
-                        value={cycleForm.end_date}
-                        onChange={(e) => setCycleForm({ ...cycleForm, end_date: e.target.value })}
-                      />
-                    </div>
-
-                    <div>
-                      <button type="submit" className="btn-neon" style={{ width: '100%' }}>
-                        <Plus size={16} /> Save Period Range
-                      </button>
-                    </div>
+                    <div><label style={{ fontSize: '0.78rem', color: '#FF2E7A', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label><input type="date" required className="dark-input" value={cycleForm.start_date} onChange={(e) => setCycleForm({ ...cycleForm, start_date: e.target.value })} /></div>
+                    <div><label style={{ fontSize: '0.78rem', color: '#FF2E7A', fontWeight: '700', display: 'block', marginBottom: '6px' }}>END DATE</label><input type="date" required className="dark-input" value={cycleForm.end_date} onChange={(e) => setCycleForm({ ...cycleForm, end_date: e.target.value })} /></div>
+                    <button type="submit" className="btn-neon" style={{ width: '100%' }}><Plus size={16} /> Save Range</button>
                   </form>
                 </div>
 
-                <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#ffffff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Calendar size={18} color="#FF2A6D" /> Period History Grid
-                  </h3>
-
-                  {cycles.length === 0 ? (
-                    <div className="dark-glass-card" style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
-                      <HeartPulse size={40} style={{ marginBottom: '12px', opacity: 0.4, color: '#FF2A6D' }} />
-                      <p style={{ fontSize: '0.95rem' }}>No period cycles logged yet. Use the form above to record your first cycle.</p>
+                <div className="grid-3">
+                  {cycles.map((item) => (
+                    <div key={item.id} className="dark-glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: '800', color: '#FF2E7A' }}>{formatMonthLabel(getMonthKey(item.start_date))}</span>
+                        <button onClick={() => handleDeleteCycle(item.id)} style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#ffffff', marginBottom: '12px' }}>{formatDateFormatted(item.start_date)} — {formatDateFormatted(item.end_date)}</div>
+                      <span style={{ fontSize: '0.9rem', fontWeight: '800', background: 'linear-gradient(135deg, #FF2E7A, #9A1750)', color: 'white', padding: '4px 12px', borderRadius: '99px', textAlign: 'center' }}>
+                        {calculateDaysDiff(item.start_date, item.end_date)} Days Flow
+                      </span>
                     </div>
-                  ) : (
-                    <div className="grid-3">
-                      {cycles.map((item) => {
-                        const days = calculateDaysDiff(item.start_date, item.end_date);
-                        return (
-                          <div key={item.id} className="dark-glass-card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                            <div>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                <span style={{ fontSize: '0.85rem', fontWeight: '800', color: '#FF2E7A', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                  {formatMonthLabel(getMonthKey(item.start_date))}
-                                </span>
-                                <button
-                                  onClick={() => handleDeleteCycle(item.id)}
-                                  style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer' }}
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
-                                <div style={{ background: 'rgba(15, 8, 24, 0.6)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255, 59, 110, 0.15)' }}>
-                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '600' }}>START DATE</div>
-                                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#ffffff', marginTop: '2px' }}>
-                                    {formatDateFormatted(item.start_date)}
-                                  </div>
-                                </div>
-
-                                <div style={{ background: 'rgba(15, 8, 24, 0.6)', padding: '10px 12px', borderRadius: '10px', border: '1px solid rgba(255, 59, 110, 0.15)' }}>
-                                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: '600' }}>END DATE</div>
-                                  <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#ffffff', marginTop: '2px' }}>
-                                    {formatDateFormatted(item.end_date)}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid rgba(255, 59, 110, 0.15)' }}>
-                              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Total Duration</span>
-                              <span style={{ fontSize: '0.9rem', fontWeight: '800', background: 'linear-gradient(135deg, #FF2E7A, #9A1750)', color: 'white', padding: '4px 12px', borderRadius: '99px', boxShadow: '0 2px 10px rgba(255,42,109,0.3)' }}>
-                                {days} Days Flow
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  ))}
                 </div>
               </div>
             )}
@@ -1705,40 +1685,13 @@ export default function App() {
                 <X size={20} />
               </button>
             </div>
-
             <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>AMOUNT (₹)</label>
-                <input type="number" required placeholder="e.g. 250" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>CATEGORY</label>
-                <select value={expenseForm.category_id} onChange={(e) => setExpenseForm({ ...expenseForm, category_id: e.target.value })}>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DESCRIPTION</label>
-                <input type="text" placeholder="e.g. Flowers, Vegetables, Petrol" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ADDED BY (PERSON NAME)</label>
-                <input type="text" placeholder="e.g. Tamil / Pooja" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DATE</label>
-                <input type="date" required value={expenseForm.expense_date} onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} />
-              </div>
-
-              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
-                Save Expense
-              </button>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>AMOUNT (₹)</label><input type="number" required placeholder="e.g. 250" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} /></div>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>CATEGORY</label><select value={expenseForm.category_id} onChange={(e) => setExpenseForm({ ...expenseForm, category_id: e.target.value })}>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>DESCRIPTION</label><input type="text" placeholder="e.g. Fuel, Flowers..." value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} /></div>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>ADDED BY</label><input type="text" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} /></div>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>DATE</label><input type="date" required value={expenseForm.expense_date} onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} /></div>
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>Save Expense</button>
             </form>
           </div>
         </div>
@@ -1754,49 +1707,18 @@ export default function App() {
                 <X size={20} />
               </button>
             </div>
-
             <form onSubmit={handleAddScheme} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SCHEME TITLE</label>
-                <input type="text" required placeholder="e.g. Sri Lakshmi 20-Month Chit" value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} />
-              </div>
-
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>SCHEME TITLE</label><input type="text" required placeholder="e.g. Sri Lakshmi 20-Month Chit" value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>TYPE</label>
-                  <select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}>
-                    <option value="Chit Fund">Chit Fund</option>
-                    <option value="Loan Taken">Loan Taken</option>
-                    <option value="Loan Given">Loan Given</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DURATION (MONTHS)</label>
-                  <input type="number" required placeholder="e.g. 20" value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} />
-                </div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>TYPE</label><select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}><option value="Chit Fund">Chit Fund</option><option value="Loan Taken">Loan Taken</option><option value="Loan Given">Loan Given</option></select></div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>DURATION (MONTHS)</label><input type="number" required value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} /></div>
               </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTHLY BASE (₹)</label>
-                  <input type="number" required placeholder="e.g. 10000" value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
-                  <input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} />
-                </div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>MONTHLY BASE (₹)</label><input type="number" required value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} /></div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>START DATE</label><input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} /></div>
               </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ORGANIZER & GENERAL NOTES</label>
-                <textarea rows="3" placeholder="Write organizer details, auction payout rules, or contact info..." value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} />
-              </div>
-
-              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
-                Save Scheme & Generate Schedule
-              </button>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>ORGANIZER & GENERAL NOTES</label><textarea rows="3" placeholder="Write organizer details, auction payout rules, or contact info..." value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} /></div>
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>Save Scheme & Generate Schedule</button>
             </form>
           </div>
         </div>
@@ -1812,49 +1734,18 @@ export default function App() {
                 <X size={20} />
               </button>
             </div>
-
             <form onSubmit={handleSaveEditedScheme} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>SCHEME TITLE</label>
-                <input type="text" required value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} />
-              </div>
-
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>SCHEME TITLE</label><input type="text" required value={schemeForm.title} onChange={(e) => setSchemeForm({ ...schemeForm, title: e.target.value })} /></div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>TYPE</label>
-                  <select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}>
-                    <option value="Chit Fund">Chit Fund</option>
-                    <option value="Loan Taken">Loan Taken</option>
-                    <option value="Loan Given">Loan Given</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>DURATION (MONTHS)</label>
-                  <input type="number" required value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} />
-                </div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>TYPE</label><select value={schemeForm.type} onChange={(e) => setSchemeForm({ ...schemeForm, type: e.target.value })}><option value="Chit Fund">Chit Fund</option><option value="Loan Taken">Loan Taken</option><option value="Loan Given">Loan Given</option></select></div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>DURATION (MONTHS)</label><input type="number" required value={schemeForm.total_months} onChange={(e) => setSchemeForm({ ...schemeForm, total_months: e.target.value })} /></div>
               </div>
-
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>MONTHLY BASE (₹)</label>
-                  <input type="number" required value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>START DATE</label>
-                  <input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} />
-                </div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>MONTHLY BASE (₹)</label><input type="number" required value={schemeForm.monthly_amount} onChange={(e) => setSchemeForm({ ...schemeForm, monthly_amount: e.target.value })} /></div>
+                <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>START DATE</label><input type="date" required value={schemeForm.start_date} onChange={(e) => setSchemeForm({ ...schemeForm, start_date: e.target.value })} /></div>
               </div>
-
-              <div>
-                <label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700', display: 'block', marginBottom: '6px' }}>ORGANIZER & GENERAL NOTES</label>
-                <textarea rows="3" value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} />
-              </div>
-
-              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>
-                Save Scheme Changes
-              </button>
+              <div><label style={{ fontSize: '0.78rem', color: '#6E5347', fontWeight: '700' }}>ORGANIZER & GENERAL NOTES</label><textarea rows="3" value={schemeForm.general_notes} onChange={(e) => setSchemeForm({ ...schemeForm, general_notes: e.target.value })} /></div>
+              <button type="submit" className="btn-primary" style={{ marginTop: '8px' }}>Save Scheme Changes</button>
             </form>
           </div>
         </div>
@@ -1865,10 +1756,7 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(43, 22, 14, 0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '16px' }}>
           <div className="glass-card" style={{ width: '100%', maxWidth: '360px', background: '#ffffff' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: '#2B160E', marginBottom: '8px' }}>Confirm Delete</h3>
-            <p style={{ fontSize: '0.9rem', color: '#6E5347', marginBottom: '24px' }}>
-              Are you sure you want to delete this expense record from Supabase?
-            </p>
-
+            <p style={{ fontSize: '0.9rem', color: '#6E5347', marginBottom: '24px' }}>Are you sure you want to delete this expense record?</p>
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button className="btn-secondary" onClick={() => setDeleteTargetId(null)}>Cancel</button>
               <button className="btn-primary" style={{ background: '#FF3B6E' }} onClick={handleDeleteExpense}>Delete</button>

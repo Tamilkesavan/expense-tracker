@@ -1,6 +1,9 @@
 /* ==========================================================================
    TAMIL POOJA EXPENSE TRACKER & SUITE - SOFT PASTEL GLASS UI
    ========================================================================== */
+   @tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --marigold: #FF7A29;
