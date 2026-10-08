@@ -64,7 +64,7 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat-2', name: 'Transport', color: '#3b82f6', icon: 'Car' },
   { id: 'cat-3', name: 'Shopping', color: '#FF3B6E', icon: 'ShoppingBag' },
   { id: 'cat-4', name: 'Entertainment', color: '#8b5cf6', icon: 'Tv' },
-  { id: 'cat-5', name: 'Utilities', color: '#B8860B', icon: 'Zap' },
+  { id: 'cat-5', name: 'Selfcare', color: '#B8860B', icon: 'Sparkles' },
   { id: 'cat-6', name: 'Healthcare', color: '#ef4444', icon: 'HeartPulse' },
   { id: 'cat-7', name: 'Housing', color: '#78716c', icon: 'Home' },
   { id: 'cat-8', name: 'Grocery', color: '#06b6d4', icon: 'ShoppingBag' },
@@ -73,7 +73,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const ICON_MAP = {
-  Utensils, Car, ShoppingBag, Tv, Zap, HeartPulse, Home, GraduationCap, MoreHorizontal
+  Utensils, Car, ShoppingBag, Tv, Zap, Sparkles, HeartPulse, Home, GraduationCap, MoreHorizontal
 };
 
 // --- HELPER UTILS ---
