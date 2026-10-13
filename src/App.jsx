@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabaseClient';
+import ChatAssistant from './ChatAssistant';
 import {
   Wallet,
   TrendingDown,
@@ -1610,6 +1611,9 @@ export default function App() {
           );
         })}
       </nav>
+
+      {/* DATA ASSISTANT CHAT */}
+      <ChatAssistant userName={currentUser} />
 
       {/* MODAL: ADD EXPENSE */}
       {isAddExpenseOpen && (

@@ -1,16 +1,26 @@
-# React + Vite
+# Tamil Pooja Suite
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Household expense, chit/loan and cycle tracker built with React, Vite and Supabase.
 
-Currently, two official plugins are available:
+## Running locally
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+cp env.local .env.local   # Supabase URL and anon key
+npm run dev
+```
 
-## React Compiler
+## Data assistant chat
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The chat button in the bottom-right corner opens an assistant that answers questions about your data
+("How much did we spend on groceries last month?", "How much is left on our chits?"). It runs in
+`api/chat.js` (a Vercel serverless function) and `server/chat.js`, which let Claude call read-only tools that
+query Supabase. Nothing in the chat can add, change or delete data.
 
-## Expanding the Oxlint configuration
+It needs an Anthropic API key, kept on the server only:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Locally:** add `ANTHROPIC_API_KEY=sk-ant-...` to `.env.local` (git-ignored). `npm run dev` serves `/api/chat` too.
+- **On Vercel:** Project → Settings → Environment Variables → add `ANTHROPIC_API_KEY`, then redeploy.
+  The function reads Supabase from `SUPABASE_URL`/`SUPABASE_ANON_KEY`, falling back to the existing `VITE_` variables.
+
+Never put the Anthropic key in a `VITE_` variable or commit it: `VITE_` values are shipped to the browser.
