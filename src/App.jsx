@@ -55,7 +55,7 @@ import {
 // --- ALLOWED USER LOGINS (Tamil, Pooja) ---
 const ALLOWED_USERS = [
   { username: 'tamil', password: 'tamil', name: 'Tamil' },
-  { username: 'pooja', password: 'pooja', name: 'Poojaa' },
+  { username: 'pooja', password: 'poojaa', name: 'Pooja' },
 ];
 
 // --- SEEDED CATEGORIES ---
