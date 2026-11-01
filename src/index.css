@@ -1536,6 +1536,24 @@ textarea:focus {
   border-color: transparent;
 }
 
+.icon-btn-edit {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: transparent;
+}
+
+.icon-btn-edit:hover {
+  background: var(--primary);
+  color: #fff;
+  border-color: transparent;
+}
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .icon-btn-success {
   color: #fff;
   background: var(--success);
@@ -1836,7 +1854,7 @@ textarea:focus {
     letter-spacing: 0.06em;
   }
   .data-table-stack td.cell-title {
-    padding-right: 48px;
+    padding-right: 92px;
     font-size: 0.95rem;
   }
   .data-table-stack td.cell-title::before { display: none; }
