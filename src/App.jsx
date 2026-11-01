@@ -262,6 +262,7 @@ export default function App() {
   const [isAddSchemeOpen, setIsAddSchemeOpen] = useState(false);
   const [editingSchemeId, setEditingSchemeId] = useState(null);
   const [deleteTargetId, setDeleteTargetId] = useState(null);
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [selectedSchemeId, setSelectedSchemeId] = useState(null);
 
   const [expenseForm, setExpenseForm] = useState({
@@ -511,10 +512,74 @@ export default function App() {
     }, 250);
   };
 
-  // Add Expense
+  const resetExpenseForm = () => {
+    setExpenseForm({
+      amount: '',
+      category_id: DEFAULT_CATEGORIES[0].id,
+      description: '',
+      added_by: currentUser,
+      expense_date: new Date().toISOString().split('T')[0]
+    });
+  };
+
+  const handleOpenAddExpense = () => {
+    setEditingExpenseId(null);
+    resetExpenseForm();
+    setIsAddExpenseOpen(true);
+  };
+
+  const handleOpenEditExpense = (exp) => {
+    setEditingExpenseId(exp.id);
+    setExpenseForm({
+      amount: String(exp.amount ?? ''),
+      category_id: exp.category_id || DEFAULT_CATEGORIES[0].id,
+      description: exp.description || '',
+      added_by: exp.added_by || currentUser,
+      expense_date: exp.expense_date || new Date().toISOString().split('T')[0]
+    });
+    setIsAddExpenseOpen(true);
+  };
+
+  const handleCloseExpenseModal = () => {
+    setIsAddExpenseOpen(false);
+    if (editingExpenseId) {
+      setEditingExpenseId(null);
+      resetExpenseForm();
+    }
+  };
+
+  // Update Expense
+  const handleUpdateExpense = async () => {
+    const updatedPayload = {
+      category_id: expenseForm.category_id,
+      amount: Number(expenseForm.amount),
+      description: expenseForm.description || 'Expense',
+      added_by: expenseForm.added_by || currentUser,
+      expense_date: expenseForm.expense_date
+    };
+
+    const { error } = await supabase.from('expenses').update(updatedPayload).eq('id', editingExpenseId);
+
+    if (!error) {
+      setExpenses((prev) =>
+        prev.map((item) => (item.id === editingExpenseId ? { ...item, ...updatedPayload } : item))
+      );
+      setIsAddExpenseOpen(false);
+      setEditingExpenseId(null);
+      resetExpenseForm();
+    } else {
+      alert('Error updating expense: ' + error.message);
+    }
+  };
+
+  // Add or Update Expense
   const handleAddExpense = async (e) => {
     e.preventDefault();
     if (!expenseForm.amount || Number(expenseForm.amount) <= 0) return;
+    if (editingExpenseId) {
+      await handleUpdateExpense();
+      return;
+    }
 
     const newExpense = {
       id: 'exp-' + Date.now(),
@@ -531,13 +596,7 @@ export default function App() {
     if (!error) {
       setExpenses((prev) => [newExpense, ...prev]);
       setIsAddExpenseOpen(false);
-      setExpenseForm({
-        amount: '',
-        category_id: DEFAULT_CATEGORIES[0].id,
-        description: '',
-        added_by: currentUser,
-        expense_date: new Date().toISOString().split('T')[0]
-      });
+      resetExpenseForm();
     } else {
       alert('Error saving expense: ' + error.message);
     }
@@ -896,7 +955,7 @@ export default function App() {
                         </span>
                       </div>
                     </div>
-                    <button className="btn btn-hero" onClick={() => setIsAddExpenseOpen(true)}>
+                    <button className="btn btn-hero" onClick={handleOpenAddExpense}>
                       <Plus size={18} /> Add New Expense
                     </button>
                   </section>
@@ -1123,7 +1182,7 @@ export default function App() {
                     </div>
                     <div className="page-actions">
                       <button className="btn btn-export" onClick={handleExportPDF}><FileText size={16} /> Export PDF</button>
-                      <button className="btn btn-primary" onClick={() => setIsAddExpenseOpen(true)}><Plus size={16} /> Add Expense</button>
+                      <button className="btn btn-primary" onClick={handleOpenAddExpense}><Plus size={16} /> Add Expense</button>
                     </div>
                   </div>
 
@@ -1207,7 +1266,10 @@ export default function App() {
                                   <td className="cell-muted" data-label="Date">{exp.expense_date}</td>
                                   <td className="cell-amount" data-label="Amount">-{formatCurrency(exp.amount)}</td>
                                   <td className="cell-actions">
-                                    <button onClick={() => setDeleteTargetId(exp.id)} className="icon-btn icon-btn-danger" title="Delete expense" aria-label="Delete expense"><Trash2 size={15} /></button>
+                                    <div className="row-actions">
+                                      <button onClick={() => handleOpenEditExpense(exp)} className="icon-btn icon-btn-edit" title="Edit expense" aria-label={`Edit expense: ${exp.description}`}><Edit2 size={15} /></button>
+                                      <button onClick={() => setDeleteTargetId(exp.id)} className="icon-btn icon-btn-danger" title="Delete expense" aria-label={`Delete expense: ${exp.description}`}><Trash2 size={15} /></button>
+                                    </div>
                                   </td>
                                 </tr>
                               );
@@ -1616,8 +1678,8 @@ export default function App() {
         <div className="modal-backdrop">
           <div className="modal" role="dialog" aria-modal="true" aria-labelledby="add-expense-title">
             <div className="modal-header">
-              <h3 id="add-expense-title" className="modal-title">Add New Expense</h3>
-              <button onClick={() => setIsAddExpenseOpen(false)} className="icon-btn" aria-label="Close">
+              <h3 id="add-expense-title" className="modal-title">{editingExpenseId ? 'Edit Expense' : 'Add New Expense'}</h3>
+              <button type="button" onClick={handleCloseExpenseModal} className="icon-btn" aria-label="Close">
                 <X size={18} />
               </button>
             </div>
@@ -1629,7 +1691,7 @@ export default function App() {
                 <div className="field"><label className="field-label" htmlFor="exp-added-by">Added By</label><input id="exp-added-by" type="text" value={expenseForm.added_by} onChange={(e) => setExpenseForm({ ...expenseForm, added_by: e.target.value })} /></div>
                 <div className="field"><label className="field-label" htmlFor="exp-date">Date</label><input id="exp-date" type="date" required value={expenseForm.expense_date} onChange={(e) => setExpenseForm({ ...expenseForm, expense_date: e.target.value })} /></div>
               </div>
-              <button type="submit" className="btn btn-primary btn-lg btn-block" style={{ marginTop: '4px' }}>Save Expense</button>
+              <button type="submit" className="btn btn-primary btn-lg btn-block" style={{ marginTop: '4px' }}>{editingExpenseId ? 'Save Changes' : 'Save Expense'}</button>
             </form>
           </div>
         </div>
